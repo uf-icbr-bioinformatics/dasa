@@ -85,6 +85,47 @@ bedtools intersect -a $IN -b $DB -wa -wb | cut -f 9 | sort | uniq -c > $OUT
 """.format(mgr.hmmdb))
         return name
 
+    def writeTornadoTSS(self):
+        name = "_scripts/tornado-tss.qsub"
+        with BImisc.ShellScript(name) as out:
+            out.write("""
+NAME=$1
+REGIONS=$2
+BW1=$3
+BW2=$4
+D=1000
+
+module load deeptools
+computeMatrix reference-point -p max -R $REGIONS -S $BW1 $BW2 -o ${NAME}.mat.gz \
+  -b $D -a $D \
+  --skipZeros --missingDataAsZero
+plotHeatmap -m ${NAME}.mat.gz -o ${NAME}.png --heatmapWidth 6 \
+  --colorList white,red \
+  --sortUsingSamples 1 --sortUsing mean --outFileSortedRegions ${NAME}.sorted.bed
+""")
+        return name
+
+    def writeTornadoRegions(self, mgr):
+        name = "_scripts/tornado-regions.qsub"
+        with BImisc.ShellScript(name) as out:
+            out.write("""
+NAME=$1
+REGIONS=$2
+BW1=$3
+BW2=$4
+D=1000
+
+module load deeptools
+computeMatrix reference-point -p max -R $REGIONS -S $BW1 $BW2 -o ${NAME}.mat.gz \
+    --referencePoint center -b $D -a $D \
+    --skipZeros --missingDataAsZero
+plotHeatmap -m ${NAME}.mat.gz -o ${NAME}.png --heatmapWidth 6 \
+    --sortUsingSamples 1 --sortUsing mean --outFileSortedRegions ${NAME}.sorted.bed \
+    --colorList white,red \
+    --startLabel Start --endLabel End
+""")        
+        return name
+
 ### Class that generates a WashU hub configuration file
 
 class WashUEntry():
@@ -596,7 +637,7 @@ class Manager():
                    (["-gv", "--genomever"], lambda a: setattr(self, "genomever", a)),
                    (["-gdb", "--genesdb"], lambda a: setattr(self, "genesdb", a)),
                    (["-gr", "--generegions"], lambda a: setattr(self, "generegions", a)),
-                   (["-gd", "--genedist"], lambda a: setattr(self, "distance", int(a))),
+#                   (["-gd", "--genedist"], lambda a: setattr(self, "distance", int(a))),
                    (["-mdb", "--hmmdb"], lambda a: setattr(self, "hmmdb", a)),
                    (["-hc", "--chromsizes"], lambda a: setattr(self, "chromsizes", a)),
                    (["-hn", "--hubname"], lambda a: setattr(self, "hubname", a)),
@@ -621,7 +662,7 @@ class Manager():
                 prev = ""
             elif a in self._opts.keys():
                 prev = a
-            elif a == "-x":
+            elif a in ["-x", "--dry"]:
                 self.dryrun = True
             elif self.samplesfile is None:
                 self.samplesfile = a
@@ -632,26 +673,10 @@ class Manager():
         return True
 
     def usage(self, what=None):
-        sys.stdout.write("""dasa.py - Differential ATAC-Seq Analysis
 
-Usage: dasa.py [options] conditions contrasts
-
-`Conditions' is a tab-delimited file with two columns containing a condition name and
-a comma-delimited list of its samples, respectively. `Contrasts' is a tab-delimited
-file with two columns, each line represent a contrast between the sample in the first column
-(test) and the one in the second column (control). The program assumes that for each sample
-S there will be a MACS output file called S.xls and a BAM file called S.bam with the 
-associated .bai index in the current directory.
-
-Options:
-  -s S    | Execute the listed steps (default: {})
-  -x      | Dry run - generate report, don't submit any jobs.
-  -norm N | Perform read-number normalization if N contains 'R', open-regions
-            normalization if N contains "O" (default: RO)
-  -fc F   | Fold change threshold for significant peaks (default: {})
-  -pval P | P-value threshold for significant peaks (default: {})
-  -log L  | Write execution log to file L.
-
+        sys.stdout.write("dasa.py - Differential ATAC-Seq Analysis\n")
+        if what == "steps":
+            sys.stdout.write("""
 Steps:
 
   1. Compute number of peaks, scaling factors
@@ -662,8 +687,72 @@ Steps:
   6. Generate track files
   7. Generate plots
   8. Generate final reports
+""")
+        elif what == "options":
+            sys.stdout.write("""
+All options have both a long and a short form.
 
-""".format(self.steps, self.log2fc, self.pval))
+General options:
+  -h [H]     | Display help on H, if specified, or 
+  --help [H] | general program usage.
+
+  -s S       | Execute the listed steps - see '-h steps' (default: {}).
+  --steps S  | 
+
+  -x         | Dry run - generate report only, don't submit any jobs.
+  --dry      |
+
+  -l L       | Write execution log to file L.
+  --log L
+
+Analysis options:
+  -m M       | Peaks from replicates of same condition are merged (M)
+  --mode M   | or intersected (I) (default: {})
+
+  -n N       | Perform read-number (ie, library size) normalization if N 
+  -norm N    | contains 'R', open-regions normalization if N contains "O" (default: RO).
+
+  -f F       | Fold change threshold (in log2 scale) for significant peaks (default: {})
+  --log2fc F |
+
+  -p P       | P-value threshold for significant peaks (default: {})
+  --pval P   | 
+
+Annotation options:
+  -gv G           | Version identifier of genome - must be the same used
+  --genomever G   | to align the reads (default: {})
+
+  -gdb D          | Path to sqlite3 database containing gene positions.
+  --genesdb D     |
+
+  -gr R           | Path to BED file containing coordinates of all genes.
+  --generegions R | (NOTE: this option will be removed in a future version).
+
+Hub creation options:
+  -hc C          | Path to BED file containing chromosome sizes
+  --chromsizes C | (e.g., hg38.chrom.sizes).
+
+  -hn N          | Name of generated genome browser hub.
+  --hubname N    |
+
+  -hu U          | URL where genome browser hub will be hosted.
+  --huburl       |
+            """.format(self.steps, self.mode, self.log2fc, self.pval, self.genomever))
+        else:
+            sys.stdout.write("""dasa.py - Differential ATAC-Seq Analysis
+
+Usage: dasa.py [options] conditions contrasts
+
+`Conditions' is a tab-delimited file with two columns containing a condition name and
+a comma-delimited list of its samples, respectively. `Contrasts' is a tab-delimited
+file with two columns, each line represent a contrast between the sample in the first column
+(test) and the one in the second column (control). The program assumes that for each sample
+S there will be a MACS output file called S.xls and a BAM file called S.bam with the 
+associated .bai index in the current directory.
+
+Use '-h options' to display help on all aavailable command-line options.
+""")
+        sys.stdout.write("\n(c) 2019, A. Riva, ICBR Bioinformatics Core, University of Florida\n")
         sys.exit(0)
 
     def openLog(self):
@@ -1060,8 +1149,10 @@ samtools bedcov $1 $2 > $3
         self.log("\n")
 
     def Step7(self, W):
-        sys.stderr.write(BItext.RED("=== Step 7: Plotting ===\n"))
         """Generate plots."""
+        sys.stderr.write(BItext.RED("=== Step 7: Plotting ===\n"))
+        torn1 = W.writeTornadoTSS()
+        torn2 = W.writeTornadoRegions()
         nplot = 0
         for contr in self.contrasts:
             if not self.dryrun:
@@ -1073,9 +1164,12 @@ samtools bedcov $1 $2 > $3
                     nplot += 1
                 testbw = "{}/{}/{}".format(self.hubname, contr.label, contr.test.pathname('bwfile'))
                 ctrlbw = "{}/{}/{}".format(self.hubname, contr.label, contr.ctrl.pathname('bwfile'))
-                self.submit("volcano.sh tss {} {} {} {} ".format(contr.pathname("tssplot"), self.generegions, testbw, ctrlbw), cpus=8)
-                self.submit("volcano.sh regions {} {} {} {} ".format(contr.pathname("testplot"), contr.pathname("uptest"), testbw, ctrlbw), cpus=8)
-                self.submit("volcano.sh -s 2 regions {} {} {} {} ".format(contr.pathname("ctrlplot"), contr.pathname("upctrl"), testbw, ctrlbw), cpus=8)
+                self.submit(" ".join([torn1, contr.pathname("tssplot"), self.generegions, testbw, ctrlbw]), cpus=8)
+                self.submit(" ".join([torn2, contr.pathname("testplot"), contr.pathname("uptest"), testbw, ctrlbw]), cpus=8)
+                self.submit(" ".join([torn2, contr.pathname("ctrlplot"), contr.pathname("upctrl"), testbw, ctrlbw]), cpus=8)
+#                self.submit("volcano.sh tss {} {} {} {} ".format(contr.pathname("tssplot"), self.generegions, testbw, ctrlbw), cpus=8)
+#                self.submit("volcano.sh regions {} {} {} {} ".format(contr.pathname("testplot"), contr.pathname("uptest"), testbw, ctrlbw), cpus=8)
+#                self.submit("volcano.sh -s 2 regions {} {} {} {} ".format(contr.pathname("ctrlplot"), contr.pathname("upctrl"), testbw, ctrlbw), cpus=8)
                 nplot += 3
         self.waitFor(nplot)
 
@@ -1201,6 +1295,8 @@ Genome browser track: {}
 <caption>Table 4. Annotation of differential peaks in each contrast.</caption>
 <tr><th>Test</th><th>Ctrl</th><th>Genes - Test</th><th>Genes - Ctrl</th><th>Classified - Test</TH><TH>Classified - Ctrl</TH><th>Full results</th></tr>
 """)
+
+
             for contr in self.contrasts:
                 dest = self.hubname + "/" + contr.pathname("annx")
                 if BImisc.missingOrStale(dest, contr.pathname("testgenes")):
