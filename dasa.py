@@ -7,8 +7,9 @@ import glob
 import time
 import math
 import os.path
+import washu
 
-from BIutils import BIfile, BIexperiment, BImisc, BIcsv, BIcolors, BItext
+from BIutils import BIfile, BIexperiment, BImisc, BIcsv, BItext
 
 """
 Strategy:
@@ -57,6 +58,14 @@ sort -m -k1,1 -k2,2n -k3,3n {} | mergeBed -i - > {}.pre
             out.write("""
 module load bedtools
 coverageBed -sorted -a $1 -b $2 | awk '{sum+=$7} END {print sum}' - > $3
+""")
+        return scriptname
+
+    def writeQuantify(self):
+        scriptname = "_scripts/quantify.sh"
+        with BImisc.ShellScript(scriptname) as out:
+            out.write("""
+samtools bedcov $1 $2 > $3
 """)
         return scriptname
 
@@ -126,145 +135,30 @@ plotHeatmap -m ${NAME}.mat.gz -o ${NAME}.png --heatmapWidth 6 \
 """)        
         return name
 
-### Class that generates a WashU hub configuration file
-
-class WashUEntry():
-    name = ""
-    filename = ""
-    color = ""
-    group = ""
-    ttype = "bigwig"
-
-    def __init__(self, name, filename, color="#000000", group=1, ttype="bigwig"):
-        self.name = name
-        self.filename = filename
-        self.color = color
-        self.colornegative = '"#000000"'
-        self.group = group
-        self.ttype = ttype
-
-    def write(self, hub, s):
-        """Write this entry to stream s."""
-        mode = "show"
-        horiz = ""
-        #fixedscale = ""
-
-        if self.ttype == "bigbed":
-            self.colorpositive = '"#0000FF"'
-            mode = "thin" 
-            horiz = '{"value": 0, "color": "#000000"}'
-        elif self.ttype == "updown":
-            self.ttype = "bigwig"
-            horiz = '{"value": 0, "color": "#000000"}'
-            self.color = '"#FF0000"'
-            self.colornegative = '"#0000FF"'
-            #fixedscale = """\n  "fixedscale": {"min": -1, "max": 1},"""
-        s.write("""{{
-  "type": "{}",
-  "name": "{}",
-  "height": 50,
-  "group": {},
-  "colorpositive": {},
-  "colornegative": {},
-  "horizontalLines": [{}],
-  "mode": "{}",
-  "url": "{}{}"
-}}""".format(self.ttype, self.name, self.group, self.color, self.colornegative, horiz, mode, hub.baseurl, self.filename))
-
-class WashUHub():
-    entries = []
-    colgroups = []
-    palette = None
-    baseurl = ""
-
-    def __init__(self, filename=None):
-        self.entries = []
-        if filename:
-            self.parseFromConf(filename)
-            
-    def parseFromConf(self, filename):
-        group = 1
-        colgroup = 1
-        samecol = 1
-
-        with open(filename, "r") as f:
-            for line in f:
-                line = line.strip()
-                words = line.split("\t")
-                if len(words) < 2:
-                    continue
-                w0 = words[0]
-                w1 = words[1]
-                if w0 == "group":
-                    group = int(w1)
-                elif w0 == "url":
-                    self.baseurl = w1
-                elif w0 == "samecol":
-                    samecol = int(w1)
-                else:
-                    if len(words) > 2:
-                        ttype = words[2]
-                    else:
-                        ttype  = "bigwig"
-                    e = WashUEntry(w0, w1, group=group, ttype=ttype)
-                    self.entries.append(e)
-                    self.colgroups.append(colgroup)
-                    samecol += -1
-                    if samecol == 0:
-                        colgroup += 1
-                        samecol = 1
-
-        if len(self.entries) > 27:
-            self.palette = BIcolors.Palette(size=64)
-        else:
-            self.palette = BIcolors.Palette()
-        c = 0
-        color = ""
-        for (e, cg) in zip(self.entries, self.colgroups):
-            if cg != c:
-                color = self.palette.nextColor()
-                c = cg
-            e.color = color
-
-    def add(self, e):
-        """Add entry E to this WashU hub."""
-        self.entries.append(e)
-
-    def write(self, s):
-        """Write this hub to stream s."""
-        comma = False
-        s.write("[\n")
-        for e in self.entries:
-            if comma:
-                s.write(",\n")
-            else:
-                comma = True
-            e.write(self, s)
-        s.write("]\n")
-
 class Alignment(object):
     nreads = 0
     npeaks = 0
     totalopen = 0
+    readsfact = 1.0
     openfact = 1.0
     nrip = 0
 
     def getFactor(self, mgr):
-        # fact = 1.0
-        # if mgr.readsnorm:
-        #     fact = fact * self.readsfact
-        # if mgr.opennorm:
-        #     fact = fact / self.openfact
-        # return fact 
+        fact = 1.0
+        if mgr.readsnorm:
+            fact = fact * self.readsfact
+        if mgr.opennorm:
+            fact = fact / self.openfact
+        return fact 
 
         #return 1.0 * self.totalopen / self.nreads
-        return self.openfact
+        #return self.openfact
 
 class Sample(BIfile.Filer, Alignment):
+    """Class representing a sample (replicate of a condition). Includes a BAM file, the peaks file 
+generated from it by MACS, and the corresponding bigBed and bigWig files."""
     name = ""
     parent = None
-    readsfact = 1.0
-    openfact = 1.0
     factor = 1.0
 
     def __init__(self, name):
@@ -288,6 +182,8 @@ class Sample(BIfile.Filer, Alignment):
             self.nrip = int(s)
 
 class Condition(BIfile.Filer, Alignment):
+    """A biological condition - container for one or more samples. Includes the merged BAM and peaks
+files, and the corresponding bigWig and bigBed files."""
     name = ""
     samples = []
 
@@ -302,6 +198,7 @@ class Condition(BIfile.Filer, Alignment):
         self.addFile("bbfile", name + ".bb")
 
     def setAlignment(self):
+        """Set the number of reads for this condition (equal to the sum of the number of reads for all samples)."""
         self.nreads = sum([s.nreads for s in self.samples])
 
     # def getFactor(self, mgr):
@@ -311,6 +208,7 @@ class Condition(BIfile.Filer, Alignment):
     #     return fact / len(self.samples)
 
     def mergePeaks(self, W, n):
+        """Write a script that merges the peaks for all samples in this condition."""
         return W.writePeakMerger("_scripts/merge-{}.sh".format(n), self.pathname("bedfile"), self.samples)
 
     def convertBED(self):
@@ -328,6 +226,7 @@ class Condition(BIfile.Filer, Alignment):
         return (npeaks, totopen)
 
 class Contrast(BIfile.Filer):
+    """Class representing the comparison between two conditions (test and control)."""
     test =  None
     ctrl = None
     label = ""
@@ -348,6 +247,7 @@ class Contrast(BIfile.Filer):
         self.addFile("ctrlsizes", self.label + ".ctrl-sizes.csv")
         self.addFile("sizes", self.label + ".sizes.csv")
         self.addFile("avgsizes", self.label + ".avgsizes.csv")
+        self.addFile("normcounts", self.label + ".norm.csv")
         self.addFile("matrix", self.label + ".matrix.csv")
         self.addFile("diff", self.label + ".diff.csv")
         self.addFile("diffx", self.label + ".diffpeaks.xlsx")
@@ -402,6 +302,7 @@ sort -m -k1,1 -k2,2n -k3,3n {} {} | mergeBed -i - > {}
         return scriptfile
 
     def quantifyPeaks(self, scriptname):
+        """Returns a list of command lines calling scriptname and the bed, bam, and count files for each sample in this contrast."""
         cmdlines = []
         for smp in self.test.samples:
             cmdlines.append(" ".join([scriptname, self.pathname("bedfile"), smp.pathname("bamfile"), self.countsfiles[smp.name].pathname()]))
@@ -410,19 +311,24 @@ sort -m -k1,1 -k2,2n -k3,3n {} {} | mergeBed -i - > {}
         return cmdlines
 
     def getFactors(self, mgr):
-        """Returns a list of two values, representing the normalization factors for the test and control conditions respectively (based on totopen)."""
-        ft = self.test.totopen
-        fc = self.ctrl.totopen
-        mr = max(ft, fc)
-        return [1.0 * ft / mr, 1.0 * fc / mr]
+        """Returns a list of two values, representing the normalization factors for the test and control conditions respectively."""
+        #ft = self.test.totopen
+        #fc = self.ctrl.totopen
+        #mr = max(ft, fc)
+        #return [1.0 * ft / mr, 1.0 * fc / mr]
+        return [ self.test.getFactor(mgr), self.ctrl.getFactor(mgr) ]
 
     def makeMatrix(self, mgr):
+        """Build the DESeq2 matrix for this contrast."""
         samples = self.test.samples + self.ctrl.samples
         nsamples = len(samples)
-        if mgr.opennorm:
-            factors = [ smp.openfact for smp in samples ]
-        else:
-            factors = [ 1.0 for smp in samples ]
+
+        # if mgr.opennorm:
+        factors = [ smp.openfact for smp in samples ]
+        #        else:
+        #            factors = [ 1.0 for smp in samples ]
+        mgr.log("Writing matrix for contrast {} with factors: {}".format(self.label, factors))
+
         streams = [ open(self.countsfiles[smp.name].pathname(), "r") for smp in samples ]
         with open(self.pathname("matrix"), "w") as out:
             out.write("\t".join([smp.name for smp in samples]) + "\n")
@@ -430,11 +336,11 @@ sort -m -k1,1 -k2,2n -k3,3n {} {} | mergeBed -i - > {}
             try:
                 for l1 in readers[0]:
                     # d = int(l1[2]) - int(l1[1]) # Do we need to normalize by peak size?
-                    v = factors[0] * float(l1[3])
+                    v = float(l1[3]) / factors[0]
                     out.write("{}:{}-{}\t{}".format(l1[0], l1[1], l1[2], int(10.0 * v)))
                     for i in range(1, nsamples):
                         li = readers[i].next()
-                        v = factors[i] * float(li[3])
+                        v = float(li[3]) / factors[0]
                         out.write("\t{}".format(int(10.0 * v)))
                     out.write("\n")
             finally:
@@ -442,7 +348,9 @@ sort -m -k1,1 -k2,2n -k3,3n {} {} | mergeBed -i - > {}
                     r.close()
 
     def writeDEGscript(self, scriptname):
-        labels = ["1" for smp in self.test.samples] + ["2" for smp in self.ctrl.samples]
+        """Write to `scriptname' the DESeq2 script for this contrast. Input is from `matrix'
+file, output to `diff' file."""
+        labels = ["1" for _ in self.test.samples] + ["2" for _ in self.ctrl.samples]
         with open(scriptname, "w") as out:
             out.write("""## Script to run DESeq2 on table of counts data.
 
@@ -460,17 +368,26 @@ dds = DESeqDataSetFromMatrix(countData = counts, colData = sampleTable, design =
 dds = estimateSizeFactors(dds)
 keep = rowSums(counts(dds)) >= 5
 dds = dds[keep,]
+
+# Write normalized counts
+nc = counts(dds, normalize=TRUE)
+write.table(nc, file="{}", sep='\t')
+
 dds = DESeq(dds)
 res = results(dds, contrast=c("condition", "{}", "{}"))
 write.table(res, file="{}", sep='\t')
 """.format(self.pathname("matrix"), self.test.name, self.ctrl.name,
-           ",".join(labels), self.test.name, self.ctrl.name,
+           ",".join(labels), 
+           self.pathname("normcounts"),
+           self.test.name, self.ctrl.name,
            self.pathname("diff")))
 
     def extractSignificant(self, mgr):
+        """Extract the significant entries from the `diffbdg' file and write them to the `sig' file for this contrast."""
         up = []
         dn = []
         with open(self.pathname("sig"), "w") as out:
+            out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
             with open(self.pathname("diffbdg"), "w") as bed:
                 for line in BIcsv.CSVreader(self.pathname("diff"), skip=1):
                     try:
@@ -492,10 +409,12 @@ write.table(res, file="{}", sep='\t')
         up.sort(key=lambda s: s[3], reverse=True)
         dn.sort(key=lambda s: s[3], reverse=True)
         with open(self.pathname("uptest"), "w") as out:
+            out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
             for rec in up:
                 out.write("\t".join([str(s) for s in rec]) + "\n")
 
         with open(self.pathname("upctrl"), "w") as out:
+            out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
             for rec in dn:
                 out.write("\t".join([str(s) for s in rec]) + "\n")
 
@@ -573,6 +492,7 @@ class Manager():
     samplenames = []
     contrasts = []
     dryrun = False
+    zipfile = True              # Generate zip file at the end?
 
     # Params
     log2fc = 1                  # -fc
@@ -664,6 +584,8 @@ class Manager():
                 prev = a
             elif a in ["-x", "--dry"]:
                 self.dryrun = True
+            elif a in ["-z", "--nozip"]:
+                self.zipfile = False
             elif self.samplesfile is None:
                 self.samplesfile = a
             else:
@@ -739,8 +661,7 @@ Hub creation options:
   --huburl       |
             """.format(self.steps, self.mode, self.log2fc, self.pval, self.genomever))
         else:
-            sys.stdout.write("""dasa.py - Differential ATAC-Seq Analysis
-
+            sys.stdout.write("""
 Usage: dasa.py [options] conditions contrasts
 
 `Conditions' is a tab-delimited file with two columns containing a condition name and
@@ -812,9 +733,9 @@ Use '-h options' to display help on all aavailable command-line options.
         for [testname, ctrlname] in self.experiment.contrasts:
             self.contrasts.append(Contrast(self.conditions[testname], self.conditions[ctrlname]))
 
-    def submit(self, cmdline, prefix="cov", mem="20G", ntasks=1, cpus=1, generic=True):
-        w = "generic.qsub" if generic else ""
-        subline = "submit -done {}.@.done -o --mem={},--ntasks={},--cpus-per-task={} {} {}".format(prefix, mem, ntasks, cpus, w, cmdline)
+    def submit(self, cmdline, prefix="cov", mem="30G", ntasks=1, cpus=1, generic=True):
+        w = "-o --mem={},--ntasks={},--cpus-per-task={} generic.qsub".format(mem, ntasks, cpus) if generic else ""
+        subline = "submit -done {}.@.done {} {}".format(prefix, w, cmdline)
         sys.stderr.write("[Submitting: {}]\n".format(subline))
         return BImisc.shell(subline)
 
@@ -903,6 +824,7 @@ Use '-h options' to display help on all aavailable command-line options.
             self.genomever, self.huburl, self.hubname, json, text)
 
     def Step1(self, W):
+        self.log("=== Step 1 ===")
         sys.stderr.write(BItext.RED("=== Step 1: Initial peak analysis ===\n"))
         samples = sorted(self.samples.values())
 
@@ -915,11 +837,18 @@ Use '-h options' to display help on all aavailable command-line options.
         for smp in samples:
             smp.nreads = self.countReads(smp.file("bamfile"))
 
-        maxopen = max([smp.totalopen for smp in samples])
-        maxreads = max([smp.nreads for smp in samples])
+        # Find sample with the largest number of reads, save its reads and totalopen
+        maxreads = 0
+        maxopen = 0
         for smp in samples:
-            smp.openfact = 1.0 * smp.totalopen / maxopen
+            if smp.nreads > maxreads:
+                maxreads = smp.nreads
+                maxopen = smp.totalopen
+
+        # Now compute normalization factors
+        for smp in samples:
             smp.readsfact = 1.0 * maxreads / smp.nreads
+            smp.openfact = 1.0 * maxopen / smp.totalopen
             smp.factor = smp.getFactor(self)
 
         self.log("\nTotal open bases:")
@@ -936,6 +865,7 @@ Use '-h options' to display help on all aavailable command-line options.
         self.log("\n")
 
     def Step2(self, W):
+        self.log("=== Step 2 ===")
         sys.stderr.write(BItext.RED("=== Step 2: Peak merging ===\n"))
         n = 0
         njobs = 0
@@ -964,16 +894,19 @@ Use '-h options' to display help on all aavailable command-line options.
         self.waitFor(njobs)
 
         n = 0
+        self.log("\nFinding common peaks, mode {}", self.mode)
         for contr in self.contrasts:
             if self.mode == "I":
                 script = contr.commonPeaks(n)
             else:
-                script = contr.mergePeaks(n)
+                script = contr.mergedPeaks(n)
             BImisc.shell(script)
             n += 1
+
         self.log("\nCommon peaks in each contrast:")
         for contr in self.contrasts:
             self.log("  {}\t{}", contr.label, contr.file("bedfile").nlines())
+
         self.log("\nAverage size of common peaks in each contrast:")
         for contr in self.contrasts:
             # Maybe these shells should become a single script?
@@ -986,8 +919,10 @@ Use '-h options' to display help on all aavailable command-line options.
             with open(contr.pathname("avgsizes"), "r") as f:
                 line = f.readline().strip().split("\t")
                 self.log("  {}\t{}\t{}", contr.label, line[0], line[1])
+        self.log("\n")
 
     def Step3(self, W):
+        self.log("=== Step 3 ===")
         sys.stderr.write(BItext.RED("=== Step 3: Peak quantification ===\n"))
         samples = self.samples.values()
         njobs = 0
@@ -997,16 +932,14 @@ Use '-h options' to display help on all aavailable command-line options.
         for smp in samples:
             cmdline = smp.FRIPcmdline(scriptname)
             if not self.dryrun:
-                self.submit(cmdline, mem="10G")
+                self.submit(cmdline, mem="15G")
                 njobs += 1
 
         # Submit jobs for quantification
-        scriptname = "_scripts/quantify.sh"
-        with BImisc.ShellScript(scriptname) as out:
-            out.write("""
-samtools bedcov $1 $2 > $3
-""")                                      # .format(P.overlap))
+        scriptname = W.writeQuantify()
+
         for contr in self.contrasts:
+            self.log("Quantifying peaks in contrast {}".format(contr.label))
             cmdlines = contr.quantifyPeaks(scriptname)
             for cmd in cmdlines:
                 if not self.dryrun:
@@ -1021,14 +954,15 @@ samtools bedcov $1 $2 > $3
             smp.readFRIP()
             self.log("  {}\t{}\t{}\t{:.2f}".format(smp.name, smp.nrip, smp.nreads, 100.0 * smp.nrip / smp.nreads))
 
-        for contr in self.contrasts:
-            contr.makeMatrix(self)
         self.log("\n")
 
     def Step4(self, W):
+        self.log("=== Step 4 ===")
         sys.stderr.write(BItext.RED("=== Step 4: Differential analysis ===\n"))
         njobs = 0
         for contr in self.contrasts:
+            contr.makeMatrix(self)
+            self.log("Performing differential analysis on contrast {}".format(contr.label))
             scriptname = "_scripts/rundeseq-{}.R".format(njobs)
             contr.writeDEGscript(scriptname)
             if not self.dryrun:
@@ -1042,8 +976,8 @@ samtools bedcov $1 $2 > $3
         self.log("\n")
 
     def Step5(self, W):
+        self.log("=== Step 5 ===")
         sys.stderr.write(BItext.RED("=== Step 5: Annotation of differential peaks ===\n"))
-        """Annotate common and unique peaks."""
         self.log("*** Annotating differential peaks ***")
         name = W.writeQsubAnnotate(self)
         if self.hmmdb:
@@ -1067,8 +1001,8 @@ samtools bedcov $1 $2 > $3
         self.log("\n")
 
     def Step6(self, W):
+        self.log("=== Step 6 ===")
         sys.stderr.write(BItext.RED("=== Step 6: Generation of genome browser track files ===\n"))
-        """Generate bigwig and bigbed files."""
         BImisc.shell("mkdir -p {} {}/peaks {} {}".format(self.hubname, self.hubname, " ".join([ self.hubname + "/" + contr.label for contr in self.contrasts]), " ".join([ self.hubname + "/" + cond.name for cond in self.conditions.values()])))
 
         n = 0
@@ -1076,14 +1010,17 @@ samtools bedcov $1 $2 > $3
             if not self.dryrun:
                 dest = self.hubname + "/peaks/" + smp.pathname("bwfile")
                 if BImisc.missingOrStale(dest, smp.pathname("bamfile")):
-                    self.submit("bamtowig.qsub {} {} deep=Y scale={}".format(smp.file("bamfile"), dest, 100.0 * smp.openfact), generic=False) # we only normalize by openfactor, because deeptools already does CPM normalization
+                    sys.stderr.write("Generating WIG: {} -> {} ({})\n".format(smp.file("bamfile"), dest, smp.getFactor(self)))
+                    self.submit("bamBigWig.qsub {} {} deep=Y scale={}".format(smp.file("bamfile"), dest, smp.getFactor(self)), generic=False) # we only normalize by openfactor, because deeptools already does CPM normalization
                     n += 1
+
         for cond in self.conditions.values():
             if not self.dryrun:
-                # dest = self.hubname + "/" + cond.pathname("bwfile")
-                # if BImisc.missingOrStale(dest, cond.pathname("bamfile")):
-                #     self.submit("bamtowig.qsub {} {} deep=Y scale={}".format(cond.pathname("bamfile"), dest, 100.0 * cond.getFactor(self)), generic=False)
-                #     n += 1
+                dest = self.hubname + "/" + cond.pathname("bwfile")
+                if BImisc.missingOrStale(dest, cond.pathname("bamfile")):
+                    sys.stderr.write("Generating WIG: {} -> {} ({})\n".format(cond.pathname("bamfile"), dest, cond.getFactor(self)))
+                    self.submit("bamBigWig.qsub {} {} deep=Y scale={}".format(cond.pathname("bamfile"), dest, cond.getFactor(self)), generic=False)
+                    n += 1
                 dest = self.hubname + "/" + cond.pathname("bbfile")
                 if BImisc.missingOrStale(dest, cond.pathname("bedfile")):
                     BImisc.shell("bedToBigBed -type=bed3+3 -tab {} {} {}".format(cond.file("bedfile"), self.chromsizes, dest))
@@ -1092,14 +1029,17 @@ samtools bedcov $1 $2 > $3
             f = contr.getFactors(self)  # factors based on totopen
             dest = "{}/{}/{}".format(self.hubname, contr.label, contr.test.pathname("bwfile"))
             if BImisc.missingOrStale(dest, contr.test.pathname("bamfile")):
-                self.submit("bamtowig.qsub {} {} deep=Y scale={}".format(contr.test.pathname("bamfile"), dest, 100.0 * f[0]), generic=False)
+                sys.stderr.write("Generating WIG: {} -> {} ({})\n".format(contr.test.pathname("bamfile"), dest, f[0]))
+                self.submit("bamBigWig.qsub {} {} deep=Y scale={}".format(contr.test.pathname("bamfile"), dest, f[0]), generic=False)
                 n += 1
             dest = "{}/{}/{}".format(self.hubname, contr.label, contr.ctrl.pathname("bwfile"))
             if BImisc.missingOrStale(dest, contr.ctrl.pathname("bamfile")):
-                self.submit("bamtowig.qsub {} {} deep=Y scale={}".format(contr.ctrl.pathname("bamfile"), dest, 100.0 * f[1]), generic=False)
+                sys.stderr.write("Generating WIG: {} -> {} ({})\n".format(contr.ctrl.pathname("bamfile"), dest, f[1]))
+                self.submit("bamBigWig.qsub {} {} deep=Y scale={}".format(contr.ctrl.pathname("bamfile"), dest, f[1]), generic=False)
                 n += 1
             dest =  "{}/{}".format(self.hubname, contr.pathname("diffbw"))
             if BImisc.missingOrStale(dest, contr.pathname("diffbdg")):
+                sys.stderr.write("Generating WIG: {} -> {}\n".format(contr.pathname("diffbg"), dest))
                 BImisc.shell("bedGraphToBigWig {} {} {}".format(contr.pathname("diffbdg"), self.chromsizes, dest))
 
         self.waitFor(n)
@@ -1110,20 +1050,37 @@ samtools bedcov $1 $2 > $3
 
         # Generate JSON configuration file for hub
         for contr in self.contrasts:
-            BImisc.shell("cp {} {}/{}/".format(" ".join(contr.hubfiles(self)), self.hubname, contr.label))
+            BImisc.shell("cp {} {}/{}/; true".format(" ".join(contr.hubfiles(self)), self.hubname, contr.label))
 
-        # Write track configuration file and index.html
+        # Write track configuration file (by sample)
         with open(self.hubname + "/peaks.conf", "w") as out:
             out.write("url\t{}/{}/\n".format(self.huburl, self.hubname))
-            for (smpname, smp) in self.samples.iteritems():
+            #for (smpname, smp) in self.samples.iteritems():
+            for smpname in self.samplenames:
+                smp = self.samples[smpname]
                 out.write("\nsamecol\t2\n")
                 out.write("group\t1\n")
                 out.write("{}\t{}\n".format(smp.name, "peaks/" + smp.pathname('bwfile')))
                 out.write("group\t2\n")
                 out.write("{}_peaks\t{}\tbigbed\n".format(smp.name, "peaks/" + smp.pathname('bbfile')))
-        H = WashUHub(self.hubname + "/peaks.conf")
-        with open(self.hubname + "/peaks.json", "w") as out:
-            H.write(out)
+        H = washu.WashUHub(self.hubname + "/peaks.conf")
+        sys.stderr.write("{} => {}\n".format(self.hubname + "/peaks.conf", self.hubname + "/peaks.json"))
+        H.run(self.hubname + "/peaks.json")
+
+        # Write track configuration file (by condition)
+        with open(self.hubname + "/condpeaks.conf", "w") as out:
+            out.write("url\t{}/{}/\n".format(self.huburl, self.hubname))
+            #for (condname, cond) in self.conditions.iteritems():
+            for condname in self.condnames:
+                cond  = self.conditions[condname]
+                out.write("\nsamecol\t2\n")
+                out.write("group\t1\n")
+                out.write("{}\t{}\n".format(cond.name, cond.pathname('bwfile')))
+                out.write("group\t2\n")
+                out.write("{}_peaks\t{}\tbigbed\n".format(cond.name, cond.pathname('bbfile')))
+        H = washu.WashUHub(self.hubname + "/condpeaks.conf")
+        sys.stderr.write("{} => {}\n".format(self.hubname + "/condpeaks.conf", self.hubname + "/condpeaks.json"))
+        H.run(self.hubname + "/condpeaks.json")
 
         # Now write tracks for contrasts
         for contr in self.contrasts:
@@ -1141,29 +1098,31 @@ samtools bedcov $1 $2 > $3
                 out.write("{}_peaks\t{}\tbigbed\n".format(cond2.name, cond2.pathname('bbfile')))
                 out.write("group\t2\n")
                 out.write("{}\t{}\tupdown\n".format(contr.label, contr.pathname("diffbw")))
-            H2 = WashUHub(contr.hubconf)
+            H2 = washu.WashUHub(contr.hubconf)
             sys.stderr.write("{} => {}\n".format(contr.hubconf, contr.hubjson))
-            with open(contr.hubjson, "w") as out:
-                H2.write(out)
+            H2.run(contr.hubjson)
 
         self.log("\n")
 
     def Step7(self, W):
         """Generate plots."""
+        self.log("=== Step 7 ===")
         sys.stderr.write(BItext.RED("=== Step 7: Plotting ===\n"))
         torn1 = W.writeTornadoTSS()
-        torn2 = W.writeTornadoRegions()
+        torn2 = W.writeTornadoRegions(self)
         nplot = 0
         for contr in self.contrasts:
             if not self.dryrun:
                 dest = contr.pathname("sizesplot") + ".png"
                 if BImisc.missingOrStale(dest, contr.pathname("sizes")):
-                    self.submit("density_scatterplot.py -cx 8 -cy 4 -l10 -yl {} -xl {} {} {}".format
+                    self.log("Generating peak size scatterplot for {}".format(contr.label))
+                    self.submit("density_scatterplot.py -b -cx 8 -cy 4 -l10 -yl {} -xl {} {} {}".format
                                 (contr.test.name, contr.ctrl.name, contr.pathname("sizes"), dest),
                                 mem="2G")
                     nplot += 1
                 testbw = "{}/{}/{}".format(self.hubname, contr.label, contr.test.pathname('bwfile'))
                 ctrlbw = "{}/{}/{}".format(self.hubname, contr.label, contr.ctrl.pathname('bwfile'))
+                self.log("Generating peak heatmaps for {}".format(contr.label))
                 self.submit(" ".join([torn1, contr.pathname("tssplot"), self.generegions, testbw, ctrlbw]), cpus=8)
                 self.submit(" ".join([torn2, contr.pathname("testplot"), contr.pathname("uptest"), testbw, ctrlbw]), cpus=8)
                 self.submit(" ".join([torn2, contr.pathname("ctrlplot"), contr.pathname("upctrl"), testbw, ctrlbw]), cpus=8)
@@ -1174,9 +1133,7 @@ samtools bedcov $1 $2 > $3
         self.waitFor(nplot)
 
         for contr in self.contrasts:
-            BImisc.shell("cp {} {}/{}/".format(" ".join(contr.plotfiles()), self.hubname, contr.label))
-
-        self.log("\n")
+            BImisc.shell("cp {} {}/{}/; true".format(" ".join(contr.plotfiles()), self.hubname, contr.label))
 
     def Step8(self, W, dry=False):
         """Generate track hub."""
@@ -1234,22 +1191,28 @@ samtools bedcov $1 $2 > $3
         #             out.write("Common\t" + contr.dirname + "{}.vs.{}.diffPeaks.bw".format(contr.sample1, contr.sample2))
         #     shell("{} {} > {}".format(P.mkhub, contr.hubconf, contr.hubjson))
 
+        self.log("=== Step 8 ===")
         sys.stderr.write(BItext.RED("=== Step 8: Generating final report ===\n"))
         self.log("Writing index.html")
         with open(self.hubname + "/index.html", "w") as out:
             out.write("""<!DOCTYPE html>
 <html>
 <head>
+<title>{} - Differential ATAC-Seq Analysis</title>
 <style>
 TABLE {{width: 80%; border-collapse: collapse; border: 2px solid black;}}
 TD, TH {{border: 1px solid grey}}
+CAPTION {{caption-side: bottom; font-size: small; padding-top: 10px; padding-bottom: 30px;}}
 </style>
 <body>
 <center><h1>{} - Differential ATAC-Seq Analysis</h1>
 <table>
-<caption>Table 1. Number of aligned reads and open bases in each sample.</caption>
+<caption><b>Table 1.</b> Number of aligned reads and open bases in each sample. <i>Factor</i> is a scaling factor
+computed based on the number of aligned reads and on the total open bases. <i>Peaks</i> is the number of peaks
+detected in each sample. <i>FRIP</i> is the fraction of reads that fall in peaks. According to ENCODE guidelines,
+this should be over 30%, and definitely not less than 20%.</caption>
 <tr><th>Sample</th><th>Aligned reads</th><th>Open bases</th><th>Factor</th><th>Peaks</th><th>FRIP</th></tr>
-""".format(self.hubname))
+            """.format(self.hubname, self.hubname))
 
             for smpname in self.samplenames:
                 smp = self.samples[smpname]
@@ -1258,12 +1221,12 @@ TD, TH {{border: 1px solid grey}}
                 """.format(smp.name, smp.nreads, smp.totalopen, smp.getFactor(self), smp.npeaks, 100.0 * smp.nrip / smp.nreads))
             out.write("""</table>
 <br>
-Genome browser track: {}
+Genome browser tracks for peaks: {} - {}
 <br><br>
-""".format(self.WashUlink("peaks.json", "Peak calling ({} samples)".format(len(self.samples)))))
+            """.format(self.WashUlink("peaks.json", "by sample ({} samples)".format(len(self.samples))), self.WashUlink("condpeaks.json", "by condition ({} conditions)".format(len(self.conditions)))))
 
             out.write("""<table>
-<caption>Table 2. Number of peaks and average peak sizes in each contrast.</caption>
+<caption><b>Table 2.</b> Number of peaks and average peak sizes in each contrast.</caption>
 <tr><th>Test</th><th>Ctrl</th><th>Number of peaks</th><th>Avg size in Test</th><th>Avg size in Ctrl</th></tr>
 """)
             for contr in self.contrasts:
@@ -1274,7 +1237,13 @@ Genome browser track: {}
             out.write("""</table>\n<br>\n""")
 
             out.write("""<table>
-<caption>Table 3. Differential peaks in each contrast.</caption>
+<caption><b>Table 3.</b> Differential peaks in each contrast. To determine differential peaks, the peaks in both conditions (test and control)
+are merged, to form a set of comparable peaks. The number of aligned reads in each alignable peak is then computed for all replicates of the
+two conditions, to produce a peak size matrix. Finally, this matrix is analyzed with DESeq2 to identify peaks that are significantly higher
+in the test or in the control condition. The <i>Significant</i> column reports the number of comparable peaks showing a significant difference
+between test and control; the <i>Up in Test</i> and <i>Up in Ctrl<i> columns show the number of peaks that are higher in test and in the
+control condition respectively. The Excel files in the <i>Full results</i> column contain the position, fold change, and P-value for all
+significantly different peaks.</caption>
 <tr><th>Test</th><th>Ctrl</th><th>Significant</th><th>Up in Test</th><th>Up in Ctrl</th><th>Full results</th><th>WashU hub</th></tr>
 """)
             for contr in self.contrasts:
@@ -1292,7 +1261,7 @@ Genome browser track: {}
             out.write("""</table>\n<br>\n""")
 
             out.write("""<table>
-<caption>Table 4. Annotation of differential peaks in each contrast.</caption>
+<caption><b>Table 4.</b> Annotation of differential peaks in each contrast.</caption>
 <tr><th>Test</th><th>Ctrl</th><th>Genes - Test</th><th>Genes - Ctrl</th><th>Classified - Test</TH><TH>Classified - Ctrl</TH><th>Full results</th></tr>
 """)
 
@@ -1318,7 +1287,11 @@ Genome browser track: {}
             out.write("""</table>\n<br>\n""")
 
             out.write("""<table>
-<caption>Table 5. Plots based on contrast data.</caption>
+<caption><b>Table 5.</b> Plots based on contrast data. The plots in the <i>Peak sizes</i> column show a scatterplot of the size of common peaks
+in the Test and Control conditions.  Dots above the diagonal indicate that the peak is larger in the Test sample than in the Ctrl sample. <i>TSS</i>
+plots show the ATAC profile around transcription start sites in the Test and Control conditions. <i>Test Peaks</i> heatmaps show the profile of
+peaks that are significantly higher in Test (from Table 3) in both conditions. <i>Ctrl Peaks</i> shows the same information for peaks that are 
+higher in the Control condition.</caption>
 <tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>
 """)
             for contr in self.contrasts:
@@ -1337,8 +1310,9 @@ Genome browser track: {}
 """)
         # Finally, zip everything
         # print "zipping: zip -r {}.zip {}".format(P.hubname, P.hubname)
-        self.log("Creating zip file")
-        BImisc.shell("zip -v -r {}.zip {}/".format(self.hubname, self.hubname))
+        if self.zipfile:
+            self.log("Creating zip file")
+            BImisc.shell("zip -v -r {}.zip {}/".format(self.hubname, self.hubname))
         
 ### DUMMY
 #     def dummy(self):
@@ -1434,8 +1408,7 @@ def verifyEnv():
         return False
 
 if __name__ == "__main__":
-    if verifyEnv():
-        M = Manager()
-        if M.parseArgs(sys.argv[1:]):
-            M.run()
+    M = Manager()
+    if M.parseArgs(sys.argv[1:]) and verifyEnv():
+        M.run()
 
