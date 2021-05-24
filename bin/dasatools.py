@@ -402,7 +402,7 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
     readmefile = outdir + "/README"
 
     with open(readmefile, "w") as out:
-        hubname = baseurl.rstrip("/")split("/")[-1]
+        hubname = baseurl.rstrip("/").split("/")[-1]
         out.write("""DASA Results Directory
 
 The file "index.html" is the main output file. It should be opened with a web browser.
