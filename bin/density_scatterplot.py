@@ -124,14 +124,17 @@ class DensityPlot():
             dy = newy
 
         if self.log:
-            dy = [ np.log(y+1) / self.log for y in dy ]
-            dx = [ np.log(x+1) / self.log for x in dx ]
+            sys.stderr.write("Applying log transformation.\n")
+            dy = [ np.log(y+0.5) / self.log for y in dy ]
+            dx = [ np.log(x+0.5) / self.log for x in dx ]
             min_x = min(dx)-0.1
             min_y = min(dy)-0.1
 
+        sys.stderr.write("Computing densities.\n")
         xy = np.vstack([dx, dy])
         z = gaussian_kde(xy)(xy)
 
+        sys.stderr.write("Plotting.\n")
         idx = z.argsort()
         x, y, z = np.array(dx)[idx], np.array(dy)[idx], np.array(z)[idx]
 
@@ -168,6 +171,7 @@ class DensityPlot():
 
         # Do we want a regression line?
         if self.regprob:
+            sys.stderr.write("Computing regression.\n")
             for i in range(len(dx)):
                 if np.random.random() < self.regprob:
                     regx.append(dx[i])

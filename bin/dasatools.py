@@ -368,6 +368,9 @@ def getTag(s):
     else:
         return ""
 
+def linkify(path, name):
+    return "<A href='{}{}'>{}</A>".format(path, name, name)
+
 def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
     samples = readTable(samplesfile)
     conditions = readIDs(samplesfile, unique=True)
@@ -388,9 +391,9 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
                     elif code == "Table3":
                         writeTable3(out, contrasts)
                     elif code == "Table4":
-                        writeTable4(out)
+                        writeTable4(out, contrasts, baseurl)
                     elif code == "Table5":
-                        writeTable5(out)
+                        writeTable5(out, contrasts)
                     else:
                         out.write(line)
                 else:
@@ -399,7 +402,29 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
     readmefile = outdir + "/README"
 
     with open(readmefile, "w") as out:
-        out.write("Report done.\n")
+        hubname = baseurl.rstrip("/")split("/")[-1]
+        out.write("""DASA Results Directory
+
+The file "index.html" is the main output file. It should be opened with a web browser.
+Plots contained in the report are atored in the plots/ subdirectory.
+
+The data/ directory contains the results of differential analysis. There is one
+subdirectory for each contrast (e.g. KO.vs.WT) containing the following files:
+
+  KO.vs.WT-common-peaks.bed       Coordinates of common peaks that were compared
+  KO.vs.WT-diffpeaks.csv          Results of DESeq2 on all common peaks
+  KO.vs.WT-sigpeaks.csv           Peaks showing significant difference
+  KO.vs-WT-test-up.csv            Peaks that are significantly higher in test condition (e.g. KO1)
+  KO.vs-WT-ctrl-up.csv            Peaks that are significantly higher in control condition (e.g. WT)
+
+The {} directory contains the bigWig and bigBed files to display these results in the
+WashU epigenetic browser. You should move the contents of this directory to a web server
+so that they can be accessed through the following URL:
+
+  {}
+
+If configuration is correct, the links in Sections 2 and 4 of the HTML report will work properly.
+""".format(hubname, huburl))
 
 def writeTable1(out, samples):
     factors = toDict(readTable("sample-factors.txt"))
@@ -412,7 +437,7 @@ def writeTable1(out, samples):
         out.write("<tr><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,} bp</td><td align='right'>{:.3f}</td><td align='right'>{:,}</td><td align='right'>{:.1f}%</td></tr>\n".format(smp, int(nreads[smp][0]), int(stats[smp][0]), float(factors[smp][2]), int(stats[smp][1]), 100.0*float(frips[smp][0])))
 
 def writeTable2(out, baseurl):
-    out.write(""""<TR>
+    out.write("""<TR>
   <TD align='center' width='50%'><A href='{}/peaks.json'>SAMPLES</A></TD>
   <TD align='center'><A href='{}/condpeaks.json'>CONDITIONS</A></TD>
 </TR>""".format(baseurl, baseurl))
@@ -423,8 +448,8 @@ def writeTable3(out, contrasts):
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
-        out.write("<tr><th>{}</th><th>{}</th><th>{:,}</th><th>{:.1f} bp</th><th>{:.1f} bp</th></tr>".format(
-            contr[0], contr[1], ctrdata[0], ctrdata[1], ctrdata[2]))
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:.1f} bp</td><td align='right'>{:.1f} bp</td></tr>".format(
+            contr[0], contr[1], int(ctrdata[0]), float(ctrdata[1]), float(ctrdata[2])))
 
 def writeTable4(out, contrasts, baseurl):
     contrdata = toDict(readTable("all-contr-counts.txt"))
@@ -432,13 +457,21 @@ def writeTable4(out, contrasts, baseurl):
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
-        out.write("<tr><th>{}</th><th>{}</th><th>{:,}</th><th>{:,}</th><th>${,}</th><th>{}</th><th><A href='{}'>{}</A></th></tr>".format(
-            contr[0], contr[1], ctrdata[0], ctrdata[1], ctrdata[2],
-            "data/{}/{}-diffpeaks.csv".format(label, label),
-            "{}/{}.json".format(baseurl, label)))
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td>{}</td><td>{}</td></tr>".format(
+            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]),
+            linkify("data/" + label + "/", label + "-diffpeaks.csv"),
+            linkify(baseurl, label + ".json")))
         
-def writeTable5(out):
+def writeTable5(out, contrasts):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")
+    for contr in contrasts:
+        label = contr[0] + ".vs." + contr[1]
+        out.write("<tr><th>{}</th><th>{}</th><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td></tr>".format(
+            contr[0], contr[1], 
+            linkify("plots/" + label, label + ".scatterplot.png"),
+            "",
+            linkify("plots/" + label, label + ".testpeaks.png"),
+            linkify("plots/" + label, label + ".ctrlpeaks.png")))
 
 def main(cmd, args):
     if cmd == "convert":

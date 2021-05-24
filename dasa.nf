@@ -29,16 +29,18 @@ Outline:
 
 /* Parameters */
 
+params.h = false
 params.help = false
+params.example = false
 params.samples = "SAMPLES"
 params.contrasts = "CONTRASTS"
-params.sample_to_peaks = "_peaks.xls"
 params.merge_mode = "I"
 params.log2fc = 1.0
 params.pvalue = 0.01
 params.reportDir = "Report"
 params.deeptools = true
 params.washu = true
+params.tssfile = false
 
 /* For WashU hub creation */
 params.hubURL = "http://lichtlab.cancer.ufl.edu/reports/"
@@ -51,20 +53,92 @@ params.reportTemplate = "${workflow.projectDir}/bin/report-template.html"
 
 /* Internal variables */
 
+samplesfile = file(params.samples, checkIfExists: true)
+contrastsfile = file(params.contrasts, checkIfExists: true)
 outdir = "${workflow.launchDir}/${params.reportDir}/"
 
 /* Functions */
 
 def helpMessage() {
-    log.info nfcoreHeader()
     log.info"""
-    Usage:
+Usage: nextflow run dasa.nf --samples SAMPLES --contrasts CONTRASTS [other options]
 
-""".stripIndent()
+SAMPLES is a tab-delimited file describing experimental design. It should have four columns:
+
+  condition   sample   peaks_file   bam_file
+
+Each experimental condition should be represented by at least two samples (biological replicates).
+The peaks file is assumed to be in MACS format, and bam_file is the BAM file that MACS called
+peaks on. Peak files and BAM files should be located in the launch directory. 
+
+CONTRASTS is a tab-delimited file with two columns, indicating the pairs of conditions to be 
+compard with each other. Use the --example option to see an example of these two files.
+
+Analysis options:
+
+  --log2fc          Threshold on log2(fold change) for differential analysis. Default: 1.0.
+
+  --pvalue          Threshold on FDR-corrected P-value for differential analysis. Default: 0.01.
+
+  --merge_mode      Determines which area of partially-overlapping peaks to use in differential 
+                    analysis. Can be either "I" (intersecting part is used) or "U" (the union of
+                    the two peaks is used). Default: I.
+
+Report options:
+
+  --reportDir       Name of final report directory. DefaultL "Report".
+
+  --reportName      Title of final report. Default: "ATAC-Seq Differential Analysis"
+
+  --reportTemplate  Filename of HTML template for report.
+
+WashU genome browser options (see README file in report directory for details):
+
+  --hubName         Directory name of this hub.
+
+  --hubOrganism     Organism code for genome browser.
+
+  --hubURL          URL at which genome browser tracks will be published.
+  
+(c) 2021, A.Riva, University of Florida
+"""
 }
 
-if (params.help) {
+def example() {
+    log.info"""
+In this example, ATAC-Seq was performed on three different experimental conditions
+(WT, KO1, KO2) each one having three biological replicates (WT_1, WT_2, etc). We wish
+to compare peaks in KO1 and KO2 versus WT, and also KO1 vs KO2. We assume that peak
+files are called S_peaks.xls and BAM files are called S.bam, where S is the sample name.
+
+The SAMPLES file should loook like this:
+
+  WT    WT_1    WT_1_peaks.xls    WT_1.bam
+  WT    WT_2    WT_2_peaks.xls    WT_2.bam
+  WT    WT_3    WT_3_peaks.xls    WT_3.bam
+  KO1   KO1_1   KO1_1_peaks.xls   KO1_1.bam
+  KO1   KO1_2   KO1_2_peaks.xls   KO1_2.bam
+  KO1   KO1_3   KO1_3_peaks.xls   KO1_3.bam
+  KO2   KO2_1   KO2_1_peaks.xls   KO2_1.bam
+  KO2   KO2_2   KO2_2_peaks.xls   KO2_2.bam
+  KO2   KO2_3   KO2_3_peaks.xls   KO2_3.bam
+
+The CONTRASTS file should be:
+
+  KO1    WT
+  KO2    WT
+  KO1    KO2
+
+"""
+}
+
+if (params.help || params.h) {
    helpMessage()
+   exit 0
+}
+
+if (params.example) {
+   example()
    exit 0
 }
 
@@ -72,14 +146,14 @@ if (params.help) {
 
 /* For every sample, output all info in the SAMPLES file */
 Channel
-	.fromPath(params.samples)
+	.fromPath(samplesfile)
 	.splitCsv(header:false, sep:'\t')
 	.map( row -> tuple(row[1], row[0], "${workflow.launchDir}/" + row[2], "${workflow.launchDir}/" + row[3]) )
 	.into { samples_ch; cond_samples_ch; contr_samples_ch; contr_samples_ch_2 } /* smp, cond, peaks, bam */
 
 /* For every condition, output the info in the SAMPLES file for all its samples. */
 Channel
-	.fromPath(params.samples)
+	.fromPath(samplesfile)
 	.splitCsv(header:false, sep:'\t')
 	.map( row -> tuple(row[0], row[1]) )
 	.groupTuple()
@@ -87,7 +161,7 @@ Channel
 
 /* Output label, test, and ctrl condition for each contrast. */
 Channel
-	.fromPath(params.contrasts)
+	.fromPath(contrastsfile)
 	.splitCsv(header:false, sep:'\t')
 	.map( row -> tuple(row[0] + ".vs." + row[1], row[0], row[1]) )
 	.into { contrasts_ch; contrasts_ch_2; contrasts_ch_3; contrasts_ch4; contr_for_tornado_ch; contr_for_scatterplot_ch } /* TEST.vs.CTRL, TEST, CTRL */
@@ -445,7 +519,7 @@ process ExtractSignificant {
 	N1=\$(grep -c ^ sigpeaks.csv)
 	N2=\$(grep -c ^ test-up.csv)
 	N3=\$(grep -c ^ ctrl-up.csv)
-	echo -e "\$label\t\$N1\t\$N2\t\$N3" > contr-counts.txt
+	echo -e "$label\t\$N1\t\$N2\t\$N3" > contr-counts.txt
 	"""
 }
 
@@ -683,10 +757,11 @@ Channel
 	.map( row -> tuple(row[0], row[3], row[4]) )          /* label, cond, bw */
 	.groupTuple()                                         /* label, [cond], [bw] */
 	.join(regions_to_tornado_ch)                          /* label, [cond], [bw], upregions, dnregions */
-	.set { regions_tornado_ch }
+	.into { regions_tornado_ch; tss_tornado_ch }
 
 process RegionsTornado {
-	module "deeptools/2.4.3"
+	time "2h"
+	memory "2G"
 
 	input:
 	tuple label, samples, bigwigs, upregions, dnregions from regions_tornado_ch
@@ -721,6 +796,48 @@ draw_tornado ${label}.ctrlpeaks $dnregions ${bigwigs[0]} ${bigwigs[1]}
 	"""
 }
 
+process TSStornado {
+	time "2h"
+	memory "2G"
+
+	input:
+	tuple label, samples, bigwigs, upregions, dnregions from tss_tornado_ch
+
+	output:
+	file("*.png") into dummy_png_2
+
+	publishDir "$outdir/plots/$label/", mode: "copy", pattern: "*.png"
+
+	when:
+	params.tssfile
+
+	script:
+	"""
+module purge
+module load deeptools
+
+function draw_tornado() {
+  NAME=\$1
+  REGIONS=\$2
+  BW1=\$3
+  BW2=\$4
+  D=1000
+
+  computeMatrix reference-point -p max -R \$REGIONS -S \$BW1 \$BW2 -o \${NAME}.mat0.gz \
+    --referencePoint center \
+    -b \$D -a \$D --skipZeros --missingDataAsZero
+  orientMatrix.py \$REGIONS \${NAME}.mat0.gz \${NAME}.mat.gz
+  plotHeatmap -m \${NAME}.mat.gz -o \${NAME}.png --heatmapWidth 6 \
+    --samplesLabel ${samples[0]} ${samples[1]} \
+    --xAxisLabel "distance (bp)" --refPointLabel "TSS" --yAxisLabel "Genes" \
+    --regionsLabel "ATAC" \
+    --colorList white,red --sortUsingSamples 1 --sortUsing mean
+}
+
+draw_tornado ${label}.TSS ${params.tssfile} ${bigwigs[0]} ${bigwigs[1]}
+	"""
+}
+
 /* ** Size scatterplots ** */
 
 Channel
@@ -729,6 +846,7 @@ Channel
 	.set { size_plot }
 
 process SizeScatterplot {
+	time "12h"
 
 	input:
 	tuple label, sizes, testCond, ctrlCond from size_plot
