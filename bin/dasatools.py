@@ -369,7 +369,7 @@ def getTag(s):
         return ""
 
 def linkify(path, name):
-    return "<A href='{}{}'>{}</A>".format(path, name, name)
+    return "<A href='{}/{}'>{}</A>".format(path, name, name)
 
 def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
     samples = readTable(samplesfile)
@@ -469,7 +469,7 @@ def writeTable5(out, contrasts):
         out.write("<tr><th>{}</th><th>{}</th><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td></tr>".format(
             contr[0], contr[1], 
             linkify("plots/" + label, label + ".scatterplot.png"),
-            "",
+            linkify("plots/" + label, label + ".TSS.png"),
             linkify("plots/" + label, label + ".testpeaks.png"),
             linkify("plots/" + label, label + ".ctrlpeaks.png")))
 
