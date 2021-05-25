@@ -2,6 +2,7 @@
 
 import sys
 import csv
+import os.path
 from collections import defaultdict
 
 def convertPeaks(peaksfile, bedfile):
@@ -371,7 +372,7 @@ def getTag(s):
 def linkify(path, name):
     return "<A href='{}/{}'>{}</A>".format(path, name, name)
 
-def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
+def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl, flags="T"):
     samples = readTable(samplesfile)
     conditions = readIDs(samplesfile, unique=True)
     contrasts = readTable(contrastsfile)
@@ -393,7 +394,7 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl):
                     elif code == "Table4":
                         writeTable4(out, contrasts, baseurl)
                     elif code == "Table5":
-                        writeTable5(out, contrasts)
+                        writeTable5(out, contrasts, flags)
                     else:
                         out.write(line)
                 else:
@@ -457,19 +458,19 @@ def writeTable4(out, contrasts, baseurl):
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
-        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td>{}</td><td>{}</td></tr>".format(
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td><td align='center'>{}</td></tr>".format(
             contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]),
             linkify("data/" + label + "/", label + "-diffpeaks.csv"),
             linkify(baseurl, label + ".json")))
         
-def writeTable5(out, contrasts):
+def writeTable5(out, contrasts, flags):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         out.write("<tr><th>{}</th><th>{}</th><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td></tr>".format(
             contr[0], contr[1], 
             linkify("plots/" + label, label + ".scatterplot.png"),
-            linkify("plots/" + label, label + ".TSS.png"),
+            linkify("plots/" + label, label + ".TSS.png") if "T" in flags else "-",
             linkify("plots/" + label, label + ".testpeaks.png"),
             linkify("plots/" + label, label + ".ctrlpeaks.png")))
 
