@@ -7,24 +7,10 @@
 
 Differential ATAC-Seq Analysis Pipeline.
 #### Homepage / Documentation
-https://github.com/...
+https://github.com/uf-icbr-bioinformatics/dasa
 #### Authors
-Alberto Riva (ariva@ufl.edu)
+Alberto Riva (ariva@ufl.edu), ICBR Bioinformatics Core, University of Florida.
 ----------------------------------------------------------------------------------------
-*/
-
-/*
-Outline:
-
-1.a Convert peaks to BED, computing totopen and npeaks per sample
- .b Compute number of reads in each BAM file
- .c Compute normalization factors
-
-2.a Compute number of reads per condition
- .b Merge peaks for each condition, computing totopen and npeaks
- .c Merge BAM files per condition
- .d Find common peaks for all samples in each contrast
-
 */
 
 /* Parameters */
