@@ -95,3 +95,29 @@ The CONTRASTS file should be:
   KO1    KO2
 ```
 
+## Operation
+
+DASA will perform the following steps:
+
+1. For each sample, compute total number of reads (from the BAM file), total number of peaks, and total size of all peaks ("open" region).
+1. Compute normalization factors for all samples. The normalization factor for each sample is the combination of two values, one based on the number of reads, the second on the total open region. This accounts for the fact that peak height is directly proportional to the total number of reads, and inversely proportional to the total open region.
+2. For each contrast, determine the set of peaks that can be compared. For every pair of partially-overlapping peaks in the two conditions being compared, we take either the common part (if merge_mode is "I") or the union of the two peaks ("U").
+3. The "size" of each common peaks is computed, and scaled using the appropriate factor from Step 2. This produces a matrix with one row for each common peak, and one column for each sample in the conditions being compared, containing peak sizes.
+4. Differential analysis is performed on the matrix using DESeq2. The results are filtered using the supplied log2fc and pvalue parameters, producing a list of differential peaks.
+5. Finally, generate plots, genome browser tracks, and the final report.
+
+## Graphical output
+
+The pipeline will generate four plots for each contrast:
+
+1. A scatterplot of peak sizes in the two conditions being compared. This is useful to determine if the average size of peaks changes in response to an experimental variable.
+2. A tornado plot showing the average profile of all peaks that are higher in the test condition, and of the same peaks in the control condition.
+3. A tornado plot showing the average profile of all peaks that are higher in the control condition, and of the same peaks in the test condition.
+4. If the `tssfile` parameter is supplied: a tornado plot showing the average profile of the test and control condition around Transcription Start Sites.
+
+## To Do
+
+1. Containerization
+2. Conversion of output data files to Excel format.
+3. More fine-grained control over normalization factors.
+4. Better handling of `-resume`.
