@@ -424,7 +424,7 @@ so that they can be accessed through the following URL:
   {}
 
 If configuration is correct, the links in Sections 2 and 4 of the HTML report will work properly.
-""".format(hubname, huburl))
+""".format(hubname, baseurl))
 
 def writeTable1(out, samples):
     factors = toDict(readTable("sample-factors.txt"))

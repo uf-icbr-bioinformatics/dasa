@@ -72,7 +72,7 @@ The peaks file is assumed to be in MACS format, and bam_file is the BAM file tha
 peaks on. Peak files and BAM files should be located in the launch directory. 
 
 CONTRASTS is a tab-delimited file with two columns, indicating the pairs of conditions to be 
-compard with each other. Use the --example option to see an example of these two files.
+compared with each other. Use the --example option to see an example of these two files.
 
 Analysis options:
 
@@ -84,9 +84,11 @@ Analysis options:
                     analysis. Can be either "I" (intersecting part is used) or "U" (the union of
                     the two peaks is used). Default: I.
 
+  --tssfile         A file containing locations of Transcription Start Sites (optional).
+
 Report options:
 
-  --reportDir       Name of final report directory. DefaultL "Report".
+  --reportDir       Name of final report directory. Default: "Report".
 
   --reportName      Title of final report. Default: "ATAC-Seq Differential Analysis"
 
