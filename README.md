@@ -62,8 +62,8 @@ The Samples file is a tab-delimited file describing experimental design. It shou
 ```
 
 Each experimental condition should be represented by at least two samples (biological replicates).
-The peaks file is assumed to be in MACS format, and bam_file is the BAM file that MACS called
-peaks on. Peak files and BAM files should be located in the launch directory.
+The peaks file can be in BED format (with at least three columns: chromosome, start, end) or in MACS format, 
+and bam_file is the BAM file that peaks were called on. Peak files and BAM files should be located in the launch directory.
 
 The Contrasts file is a tab-delimited file with two columns, indicating the pairs of conditions to be
 compared with each other. Use the --example option to see an example of these two files.
@@ -117,7 +117,8 @@ The pipeline will generate four plots for each contrast:
 
 ## To Do
 
-1. Containerization
+1. Containerization.
 2. Conversion of output data files to Excel format.
 3. More fine-grained control over normalization factors.
 4. Better handling of `-resume`.
+5. Speed up scatterplot generation.
