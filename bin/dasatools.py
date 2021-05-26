@@ -6,22 +6,20 @@ import os.path
 from collections import defaultdict
 
 def convertPeaks(peaksfile, bedfile):
-    """Convert a MACS output file `peaksfile' to a BED file."""
+    """Convert a MACS output file `peaksfile' to a BED file. Also works if the input is already in BED format."""
     regnum = 1
     with open(bedfile, "w") as out:
         with open(peaksfile, "r") as f:
-
-            # skip header
-            for line in f:
-                if line != '\n' and line[0] != '#':
-                    break
-
             tot = 0
             chrom = ""
             start = 0
             end = 0
             c = csv.reader(f, delimiter='\t')
             for line in c:
+                
+                if len(line) == 0 or line[0][0] == '#' or line[0] == 'chr':
+                    continue
+
                 bchrom = line[0]
                 if "_" in bchrom: # get rid of weird chromosomes
                     continue

@@ -54,8 +54,8 @@ SAMPLES is a tab-delimited file describing experimental design. It should have f
   condition   sample   peaks_file   bam_file
 
 Each experimental condition should be represented by at least two samples (biological replicates).
-The peaks file is assumed to be in MACS format, and bam_file is the BAM file that MACS called
-peaks on. Peak files and BAM files should be located in the launch directory. 
+The peaks file is assumed to be in MACS format or in BED format, and bam_file is the BAM file that 
+the peaks were called on. Peak files and BAM files should be located in the launch directory. 
 
 CONTRASTS is a tab-delimited file with two columns, indicating the pairs of conditions to be 
 compared with each other. Use the --example option to see an example of these two files.
