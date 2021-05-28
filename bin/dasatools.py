@@ -107,7 +107,7 @@ def writeMatrixOld(names, countsarg, factorsarg):
             v = float(l1[3]) / factors[0]
             sys.stdout.write("{}:{}-{}\t{}".format(l1[0], l1[1], l1[2], int(10.0 * v)))
             for i in range(1, nsamples):
-                li = readers[i].__next()__
+                li = readers[i].__next__()
                 v = float(li[3]) / factors[0]
                 sys.stdout.write("\t{}".format(int(10.0 * v)))
             sys.stdout.write("\n")
@@ -159,7 +159,7 @@ def writeMatrix(testCond, conditions, samples, factorsfile, countfiles):
             v = float(l1[3]) / facts[0]
             sys.stdout.write("{}:{}-{}\t{}".format(l1[0], l1[1], l1[2], int(10.0 * v)))
             for i in range(1, nsamples):
-                li = readers[i].__next()__
+                li = readers[i].__next__()
                 v = float(li[3]) / facts[0]
                 sys.stdout.write("\t{}".format(int(10.0 * v)))
             sys.stdout.write("\n")
