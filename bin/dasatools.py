@@ -5,6 +5,17 @@ import csv
 import os.path
 from collections import defaultdict
 
+PYVER = sys.version_info.major
+
+def CSVreader(stream):
+    return csv.reader(stream, delimiter='\t')
+
+def Next(reader):
+    if PYVER == 2:
+        return reader.next()
+    else:
+        return reader.__next__()
+
 def convertPeaks(peaksfile, bedfile):
     """Convert a MACS output file `peaksfile' to a BED file. Also works if the input is already in BED format."""
     regnum = 1
@@ -14,7 +25,7 @@ def convertPeaks(peaksfile, bedfile):
             chrom = ""
             start = 0
             end = 0
-            c = csv.reader(f, delimiter='\t')
+            c = CSVreader(f)
             for line in c:
                 
                 if len(line) == 0 or line[0][0] == '#' or line[0] == 'chr':
@@ -101,13 +112,13 @@ def writeMatrixOld(names, countsarg, factorsarg):
 
     sys.stdout.write(names.replace(",", "\t") + "\n")
     streams = [ open(cf, "r") for cf in countfiles]
-    readers = [ csv.reader(s, delimiter="\t") for s in streams ]
+    readers = [ CSVreader(s) for s in streams ]
     try:
         for l1 in readers[0]:
             v = float(l1[3]) / factors[0]
             sys.stdout.write("{}:{}-{}\t{}".format(l1[0], l1[1], l1[2], int(10.0 * v)))
             for i in range(1, nsamples):
-                li = readers[i].__next__()
+                li = Next(readers[i])
                 v = float(li[3]) / factors[0]
                 sys.stdout.write("\t{}".format(int(10.0 * v)))
             sys.stdout.write("\n")
@@ -118,7 +129,7 @@ def writeMatrixOld(names, countsarg, factorsarg):
 def readFactors(factorsfile):
     factors = {}
     with open(factorsfile, "r") as f:
-        c = csv.reader(f, delimiter='\t')
+        c = CSVreader(f)
         for line in c:
             factors[line[0]] = float(line[3])
     return factors
@@ -152,14 +163,14 @@ def writeMatrix(testCond, conditions, samples, factorsfile, countfiles):
 
     sys.stdout.write("\t".join(names) + "\n")
     streams = [ open(cf, "r") for cf in files]
-    readers = [ csv.reader(s, delimiter="\t") for s in streams ]
+    readers = [ CSVreader(s) for s in streams ]
     facts   = [ factors[s] for s in names ]
     try:
         for l1 in readers[0]:
             v = float(l1[3]) / facts[0]
             sys.stdout.write("{}:{}-{}\t{}".format(l1[0], l1[1], l1[2], int(10.0 * v)))
             for i in range(1, nsamples):
-                li = readers[i].__next__()
+                li = Next(readers[i])
                 v = float(li[3]) / facts[0]
                 sys.stdout.write("\t{}".format(int(10.0 * v)))
             sys.stdout.write("\n")
@@ -179,7 +190,7 @@ def extractSignificant(diffpeaks, log2fc, pval):
     with open(diffpeaks, "r") as f, open("sigpeaks.csv", "w") as out, open("sigpeaks.bedGraph", "w") as bed:
         out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
         f.readline()
-        c = csv.reader(f, delimiter='\t')
+        c = CSVreader(f)
         for line in c:
             try:
                 fc = float(line[2])
@@ -211,7 +222,7 @@ def combineChromSizes(filenames):
     sizes = {}
     for filename in filenames:
         with open(filename, "r") as f:
-            c = csv.reader(f, delimiter='\t')
+            c = CSVreader(f)
             for line in c:
                 chrom = line[0]
                 size = int(line[1])
@@ -227,13 +238,13 @@ def combineChromSizes(filenames):
 def computeFactors(statsfile, nreadsfile):
     data = {}
     with open(statsfile, "r") as f:
-        c = csv.reader(f, delimiter='\t')
+        c = CSVreader(f)
         for line in c:
             smp = line[0]
             totopen = int(line[1])
             data[smp] = {"totopen": totopen}
     with open(nreadsfile, "r") as f:
-        c = csv.reader(f, delimiter='\t')
+        c = CSVreader(f)
         for line in c:
             smp = line[0]
             nreads = int(line[1])
@@ -256,11 +267,11 @@ def computeFactors(statsfile, nreadsfile):
 def computeFrip(fripsfile, nreadsfile):
     frips = {}
     with open(fripsfile, "r") as f:
-        c = csv.reader(f, delimiter='\t')
+        c = CSVreader(f)
         for line in c:
             frips[line[0]] = int(line[1])
     with open(nreadsfile, "r") as f:
-        c = csv.reader(f, delimiter='\t')
+        c = CSVreader(f)
         for line in c:
             smp = line[0]
             nreads = int(line[1])
