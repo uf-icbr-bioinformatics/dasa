@@ -2,6 +2,7 @@
 
 import sys, csv
 import subprocess as sp
+import codecs
 
 PYVER = sys.version_info.major
 
@@ -60,7 +61,10 @@ class Converter(object):
             cmdline = "samtools depth {}".format(self.bamfile)
         proc = sp.Popen(cmdline, shell=True, stdout=sp.PIPE)
         with open(self.outfile, "w") as out:
-            c = csv.reader(proc.stdout, delimiter='\t')
+            if PYVER == 2:
+                c = csv.reader(proc.stdout, delimiter='\t')
+            else:
+                c = csv.reader(codecs.iterdecode(proc.stdout, 'utf-8'), delimiter='\t')
             line =  Next(c)
             self.initialize(line)
             if self.window:
