@@ -130,6 +130,10 @@ if (params.example) {
    exit 0
 }
 
+if (workflow.containerEngine) {
+   log.info """Running in ${workflow.containerEngine} container ${workflow.container}.\n"""
+}
+
 /* Input channels */
 
 /* For every sample, output all info in the SAMPLES file */
@@ -514,6 +518,7 @@ process ExtractSignificant {
 /* ** Compute FRIP score for each sample ** */
 
 process FRIP {
+	memory "2G"
 
 	input:
 	tuple smp, bedfile, bamfile from frip_ch
