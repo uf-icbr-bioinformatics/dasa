@@ -154,7 +154,7 @@ class DensityPlot():
                 plt.setp(bp.get_yticklabels(), visible=False)
         else:
             fig, ax = plt.subplots(figsize=(self.xsize, self.ysize))
-        ax.scatter(x, y, c=z, s=self.pointSize, edgecolor='')
+        ax.scatter(x, y, c=z, s=self.pointSize)
 
         if self.log:
             plt.xlim(xmin=min_x)

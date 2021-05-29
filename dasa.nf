@@ -761,8 +761,8 @@ process RegionsTornado {
 
 	script:
 	"""
-module purge
-module load deeptools
+#module purge
+#module load deeptools
 
 function draw_tornado() {
   NAME=\$1
@@ -801,8 +801,8 @@ process TSStornado {
 
 	script:
 	"""
-module purge
-module load deeptools
+#module purge
+#module load deeptools
 
 function draw_tornado() {
   NAME=\$1
