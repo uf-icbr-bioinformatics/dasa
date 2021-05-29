@@ -3,6 +3,14 @@
 import sys, csv
 import subprocess as sp
 
+PYVER = sys.version_info.major
+
+def Next(c):
+    if PYVER == 2:
+        return c.next()
+    else:
+        return c.__next__()
+
 class Converter(object):
     blockChrom = ""
     blockStart = 0
@@ -53,7 +61,7 @@ class Converter(object):
         proc = sp.Popen(cmdline, shell=True, stdout=sp.PIPE)
         with open(self.outfile, "w") as out:
             c = csv.reader(proc.stdout, delimiter='\t')
-            line =  c.next()
+            line =  Next(c)
             self.initialize(line)
             if self.window:
                 self.run_window(c, out)

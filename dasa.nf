@@ -35,7 +35,13 @@ params.hubOrganism = "hg38"
 
 /* HTML report */
 params.reportName = "ATAC-Seq Differential Analyisis"
-params.reportTemplate = "${workflow.projectDir}/bin/report-template.html"
+if (workflow.containerEngine) {
+   log.info """Running in ${workflow.containerEngine} container ${workflow.container}.\n"""
+   params.reportTemplate = "/usr/local/share/dasa/report-template.html"
+} else {
+   params.reportTemplate = "${workflow.projectDir}/bin/report-template.html"
+}
+log.info """Report template: ${params.reportTemplate}"""
 
 /* Internal variables */
 
@@ -128,10 +134,6 @@ if (params.help || params.h) {
 if (params.example) {
    example()
    exit 0
-}
-
-if (workflow.containerEngine) {
-   log.info """Running in ${workflow.containerEngine} container ${workflow.container}.\n"""
 }
 
 /* Input channels */
