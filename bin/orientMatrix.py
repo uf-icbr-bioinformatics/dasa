@@ -29,7 +29,7 @@ class MatFlipper(object):
     def readMatrix(self):
         nr = 0
         data = []
-        with gzip.open(self.infile, "r") as f:
+        with gzip.open(self.infile, "rt") as f:
             l = f.readline().strip()
             if l[0] != "@":
                 sys.stderr.write("Malformed input matrix!\n")
