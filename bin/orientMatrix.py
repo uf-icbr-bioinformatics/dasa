@@ -48,7 +48,7 @@ class MatFlipper(object):
         return True
 
     def writeMatrix(self):
-        with gzip.open(self.outfile, "w") as out:
+        with gzip.open(self.outfile, "wt") as out:
             out.write("@")
             json.dump(self._header, out)
             out.write("\n")

@@ -36,7 +36,7 @@ params.hubOrganism = "hg38"
 /* HTML report */
 params.reportName = "ATAC-Seq Differential Analyisis"
 if (workflow.containerEngine) {
-   log.info """Running in ${workflow.containerEngine} container ${workflow.container}.\n"""
+   log.info """Running in ${workflow.containerEngine} container ${workflow.container}."""
    params.reportTemplate = "/usr/local/share/dasa/report-template.html"
 } else {
    params.reportTemplate = "${workflow.projectDir}/bin/report-template.html"
@@ -48,6 +48,8 @@ log.info """Report template: ${params.reportTemplate}"""
 samplesfile = file(params.samples, checkIfExists: true)
 contrastsfile = file(params.contrasts, checkIfExists: true)
 outdir = "${workflow.launchDir}/${params.reportDir}/"
+tssfile = "${params.tssfile}"
+log.info """TSS file: ${tssfile}"""
 
 /* Functions */
 
@@ -829,7 +831,7 @@ function draw_tornado() {
     --colorList white,red --sortUsingSamples 1 --sortUsing mean
 }
 
-draw_tornado ${label}.TSS ${params.tssfile} ${bigwigs[0]} ${bigwigs[1]}
+draw_tornado ${label}.TSS ${tssfile} ${bigwigs[0]} ${bigwigs[1]}
 	"""
 }
 
