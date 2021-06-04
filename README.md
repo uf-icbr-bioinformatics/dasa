@@ -20,7 +20,12 @@ DASA currently needs the following programs to be installed and in PATH:
 - R (with the DESeq2 package)
 - bedGraphToBigWig, bedToBigBed
 
-A containerized version of DASA, that eliminates the need for dependencies, will be released in the near future.
+Alternatively, we provide a singularity container that incorporates these dependencies. Instructions:
+
+1. Download [this singularity image](http://genome.ufl.edu/download/dasa.img).
+2. Add `--with-singularity /path/to/dasa.img` to the Nextflow command line.
+3. Use the `-B` option to make other directories visible to the container, as needed.
+
 
 ## Usage
 
@@ -117,8 +122,7 @@ The pipeline will generate four plots for each contrast:
 
 ## To Do
 
-1. Containerization.
-2. Conversion of output data files to Excel format.
-3. More fine-grained control over normalization factors.
-4. Better handling of `-resume`.
-5. Speed up scatterplot generation.
+1. Conversion of output data files to Excel format.
+2. More fine-grained control over normalization factors.
+3. Better handling of `-resume`.
+4. Speed up scatterplot generation.
