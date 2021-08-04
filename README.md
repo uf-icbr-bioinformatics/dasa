@@ -23,7 +23,7 @@ DASA currently needs the following programs to be installed and in PATH:
 Alternatively, we provide a singularity container that incorporates these dependencies. Instructions:
 
 1. Download [this singularity image](http://genome.ufl.edu/download/dasa.img).
-2. Add `--with-singularity /path/to/dasa.img` to the Nextflow command line.
+2. Add `-with-singularity /path/to/dasa.img` to the Nextflow command line.
 3. Use the `-B` option to make other directories visible to the container, as needed.
 
 
