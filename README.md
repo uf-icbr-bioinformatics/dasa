@@ -42,7 +42,7 @@ See the README file in that directory for more details.
 ## Configuration
 
 Parameters can be specified on the command line or in a `nextflow.config` file. The following parameters
-are currently recognize:
+are currently recognized:
 
 Name | Description
 -----|------------
