@@ -282,7 +282,7 @@ def computeFrip(fripsfile, nreadsfile):
 def readIDs(filename, col=0, unique=False):
     with open(filename, "r") as f:
         data = f.read().rstrip("\n").split("\n")
-    ids = [ row.split("\t")[0] for row in data ]
+    ids = [ row.split("\t")[col] for row in data ]
     if unique:
         uids = []
         for id in ids:
@@ -329,9 +329,9 @@ def hubentry(params):
 """.format(**params)
 
 def writeHubs(samplesfile, contrastsfile, outdir, url):
-    samples = readIDs(samplesfile)
-    conditions = readIDs(samplesfile, col=1, unique=True)
-    trackurl = url + "/peaks/"
+    samples = readIDs(samplesfile, col=1)
+    conditions = readIDs(samplesfile, unique=True)
+    trackurl = url
 
     # Hub for samples
     with open(outdir + "/peaks.json", "w") as out:
@@ -345,6 +345,7 @@ def writeHubs(samplesfile, contrastsfile, outdir, url):
         out.write("[\n")
         for cond in conditions:
             out.write(hubentry({"smp": cond, "url": trackurl}))
+        out.write("]\n")
 
     # Hubs for contrasts
     contr = readTable(contrastsfile)
