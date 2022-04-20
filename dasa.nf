@@ -965,7 +965,7 @@ process ExtractSignificantGenes {
 	file("genediff-counts.txt") into combine_genediff_counts_ch
 	file("${contr}.genes.xlsx")
 
-	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "*.xlsx"
+	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "${contr}.genes.*.csv"
 
 	"""
 	#!/bin/bash
@@ -977,10 +977,10 @@ process ExtractSignificantGenes {
 	N2=\$((N2-1))
 	N3=\$((N3-1))
 	echo -e "$contr\t\$N1\t\$N2\t\$N3" > genediff-counts.txt
-	#mv test-up.csv ${contr}.genes.test.csv
-	#mv ctrl-up.csv ${contr}.genes.ctrl.csv
-	#mv sigpeaks.csv ${contr}.genes.sig.csv
-	csvtoxls.py -q ${contr}.genes.xlsx test-up.csv ctrl-up.csv
+	cut -f 1,4- test-up.csv > ${contr}.genes.test.csv
+	cut -f 1,4- ctrl-up.csv > ${contr}.genes.ctrl.csv
+	cut -f 1,4- sigpeaks.csv > ${contr}.genes.sig.csv
+	#csvtoxls.py -q ${contr}.genes.xlsx test-up.csv ctrl-up.csv
 	"""
 }
 
