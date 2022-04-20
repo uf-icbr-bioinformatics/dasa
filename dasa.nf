@@ -160,7 +160,7 @@ Channel
 	.fromPath(contrastsfile)
 	.splitCsv(header:false, sep:'\t')
 	.map( row -> tuple(row[0] + ".vs." + row[1], row[0], row[1]) )
-	.into { contrasts_ch; contrasts_ch_2; contrasts_ch_3; contrasts_ch4; contr_for_tornado_ch; contr_for_scatterplot_ch } /* TEST.vs.CTRL, TEST, CTRL */
+	.into { contrasts_ch; contrasts_ch_2; contrasts_ch_3; contrasts_ch4; contr_for_tornado_ch; contr_for_scatterplot_ch; contr_for_genediff } /* TEST.vs.CTRL, TEST, CTRL */
 
 Channel
 	.from contrasts_ch4
@@ -180,7 +180,7 @@ process InitializeSamples {
 	output:
 	tuple smp, condName, bamfile into smp_count_reads
 	tuple condName, file("${smp}.bed") into merge_bed_ch
-	file("${smp}-convert-stats.txt") into combine_convert_stats /* convert-stats contains: totopen, npeaks */
+	tuple smp, file("${smp}-convert-stats.txt") into combine_convert_stats /* convert-stats contains: totopen, npeaks */
 	tuple smp, file("${smp}.bed"), bamfile into frip_ch, sample_bed_to_bb
 	tuple smp, bamfile into sample_bam_to_bw_ch
 
@@ -213,7 +213,7 @@ process CountReads {
 	output:
 	stdout into max_nreads_ch
 	tuple condName, stdout into cond_totreads_ch
-	file("${smp}-nreads.txt") into combine_nreads
+	tuple smp, file("${smp}-nreads.txt") into combine_nreads
 
 	script:
 	"""
@@ -266,12 +266,14 @@ process MergeBEDs {
 /* ** Compute normalization factors for samples ** */
 Channel
 	.from combine_convert_stats
-	.reduce("") { a, b -> a + " " + b }
+	.toSortedList( { a,b -> a[0] <=> b[0] } )
+	.map( { it -> it.collect( {x -> x[1]} ).join(" ") } )
 	.set { combined_stats }
 
 Channel
 	.from combine_nreads
-	.reduce("") { a, b -> a + " " + b }
+	.toSortedList( { a,b -> a[0] <=> b[0] } )
+	.map( { it -> it.collect( {x -> x[1]} ).join(" ") } )
 	.set { combined_nreads }
 
 process ComputeFactors {
@@ -282,7 +284,7 @@ process ComputeFactors {
 	val allreads from combined_nreads
 
 	output:
-	file("sample-factors.txt") into factors_ch, factors_ch2
+	file("sample-factors.txt") into factors_ch, factors_ch2, factors_ch3
 	file("all-sample-reads.txt") into nreads_for_frip_ch
 	tuple file("sample-factors.txt"), file("all-sample-stats.txt"), file("all-sample-reads.txt") into report_stats
 
@@ -487,7 +489,7 @@ sampleTable = data.frame(condition=factor(levels[labels]))
 rownames(sampleTable) = colnames(counts)
 dds = DESeqDataSetFromMatrix(countData = counts, colData = sampleTable, design = ~ condition)
 dds = estimateSizeFactors(dds)
-keep = rowSums(counts(dds)) >= 5
+keep = rowMeans(counts(dds)) >= 5
 dds = dds[keep,]
 dds = DESeq(dds)
 res = results(dds, contrast=c("condition", "$testcond", "$ctrlcond"))
@@ -504,17 +506,21 @@ process ExtractSignificant {
 	output:
 	tuple label, file("sigpeaks.bedGraph") into bdg_to_bw_ch
 	tuple label, file("test-up.csv"), file("ctrl-up.csv") into regions_to_tornado_ch
-	file("sigpeaks.csv") into dummy_sig
+	file("sigpeaks.csv")
 	file("contr-counts.txt") into combine_contr_counts_ch
 
 	publishDir "$outdir/data/$label/", mode: "copy", pattern: "*.csv", saveAs: { filename -> "${label}-${filename}" }
 
 	"""
+	#!/bin/bash
 	# generate sigpeaks.csv, sigpeaks.bedGraph, test-up.csv, ctrl-up.csv
 	dasatools.py sig $diffpeaks ${params.log2fc} ${params.pvalue}
 	N1=\$(grep -c ^ sigpeaks.csv)
 	N2=\$(grep -c ^ test-up.csv)
 	N3=\$(grep -c ^ ctrl-up.csv)
+	N1=\$((N1-1))
+	N2=\$((N2-1))
+	N3=\$((N3-1))
 	echo -e "$label\t\$N1\t\$N2\t\$N3" > contr-counts.txt
 	"""
 }
@@ -523,6 +529,7 @@ process ExtractSignificant {
 
 process FRIP {
 	memory "2G"
+	time "1h"
 
 	input:
 	tuple smp, bedfile, bamfile from frip_ch
@@ -764,7 +771,7 @@ process RegionsTornado {
 	tuple label, samples, bigwigs, upregions, dnregions from regions_tornado_ch
 
 	output:
-	file("*.png") into dummy_png
+	file("*.png")
 
 	publishDir "$outdir/plots/$label/", mode: "copy", pattern: "*.png"
 
@@ -781,15 +788,23 @@ function draw_tornado() {
   D=1000
 
   computeMatrix reference-point -p max -R \$REGIONS -S \$BW1 \$BW2 -o \${NAME}.mat.gz \
-    -b \$D -a \$D --skipZeros --missingDataAsZero
+    --referencePoint center -b \$D -a \$D --skipZeros --missingDataAsZero
   plotHeatmap -m \${NAME}.mat.gz -o \${NAME}.png --heatmapWidth 6 \
     --samplesLabel ${samples[0]} ${samples[1]} \
     --xAxisLabel "distance (bp)" --refPointLabel "Peak" --yAxisLabel "Regions" \
     --regionsLabel "ATAC" \
     --colorList white,red --sortUsingSamples 1 --sortUsing mean
 }
-draw_tornado ${label}.testpeaks $upregions ${bigwigs[0]} ${bigwigs[1]}
-draw_tornado ${label}.ctrlpeaks $dnregions ${bigwigs[0]} ${bigwigs[1]}
+nup=\$(grep -c ^ $upregions)
+ndn=\$(grep -c ^ $dnregions)
+if [[ \$nup -gt 1 ]];
+then
+  draw_tornado ${label}.testpeaks $upregions ${bigwigs[0]} ${bigwigs[1]}
+fi
+if [[ \$ndn -gt 1 ]];
+then
+  draw_tornado ${label}.ctrlpeaks $dnregions ${bigwigs[0]} ${bigwigs[1]}
+fi
 	"""
 }
 
@@ -801,7 +816,7 @@ process TSStornado {
 	tuple label, samples, bigwigs, upregions, dnregions from tss_tornado_ch
 
 	output:
-	file("*.png") into dummy_png_2
+	file("*.png")
 
 	publishDir "$outdir/plots/$label/", mode: "copy", pattern: "*.png"
 
@@ -859,6 +874,121 @@ process SizeScatterplot {
 	"""
 }
 
+/* ** Differential gene accessibility analysis. ** */
+
+process GeneMatrix {
+	time "2h"
+	cpus 20
+
+	input:
+	val samplefactors from factors_ch3
+
+	output:
+	tuple file("gene-matrix.txt"), file("levels.txt"), file("labels.txt") into genediff_ch
+
+	"""
+#!/bin/bash
+
+BAMS=""
+for bam in \$(cut -f 4 ${samplesfile}); do
+  BAMS="\$BAMS ${workflow.launchDir}/\$bam"
+done
+
+split -l 2000 ${params.tssfile} genes-
+
+for glist in genes-*;
+do
+  bedtools multicov -bams \$BAMS -bed \${glist} > \${glist}.matrix.txt &
+done
+wait
+cat *.matrix.txt | dasatools.py gmatrix ${samplesfile} ${samplefactors} > gene-matrix.txt
+"""
+}
+
+Channel
+	.from genediff_ch
+	.combine(contr_for_genediff)
+	.set { genediff }
+
+process GeneDiff {
+	time "2h"
+	executor "local"
+
+	input:
+	tuple genematrix, levelsfile, labelsfile, contr, testcond, ctrlcond from genediff
+
+	output:
+	tuple contr, file("genediff.csv") into extract_siggene_ch
+
+	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "genediff.csv", saveAs: { filename -> "${contr}-${filename}" }
+
+	script:
+	levels = file(levelsfile).text
+	labels = file(labelsfile).text
+
+	"""
+#!/usr/bin/env Rscript
+
+library("DESeq2")
+
+datafile = "$genematrix"
+message("Starting read csv")
+counts = as.matrix(read.csv(datafile, sep='\t', row.names=1))
+message("Read csv done")
+levels = c($levels)
+labels = c($labels)
+#message(1)
+sampleTable = data.frame(condition=factor(levels[labels]))
+rownames(sampleTable) = colnames(counts)
+#message(2)
+dds = DESeqDataSetFromMatrix(countData = counts, colData = sampleTable, design = ~ condition)
+#message(2.5)
+dds = estimateSizeFactors(dds)
+#message(3)
+keep = rowMeans(counts(dds)) >= 5
+dds = dds[keep,]
+dds = DESeq(dds)
+#message(4)
+res = results(dds, contrast=c("condition", "$testcond", "$ctrlcond"))
+#message(5)
+write.table(res, file="genediff.csv", sep='\t')
+        """
+}
+
+process ExtractSignificantGenes {
+	executor "local"
+
+	input:
+	tuple contr, genediff from extract_siggene_ch
+
+	output:
+	file("genediff-counts.txt") into combine_genediff_counts_ch
+	file("${contr}.genes.xlsx")
+
+	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "*.xlsx"
+
+	"""
+	#!/bin/bash
+	dasatools.py sig $genediff ${params.log2fc} ${params.pvalue}
+	N1=\$(grep -c ^ sigpeaks.csv)
+	N2=\$(grep -c ^ test-up.csv)
+	N3=\$(grep -c ^ ctrl-up.csv)
+	N1=\$((N1-1))
+	N2=\$((N2-1))
+	N3=\$((N3-1))
+	echo -e "$contr\t\$N1\t\$N2\t\$N3" > genediff-counts.txt
+	#mv test-up.csv ${contr}.genes.test.csv
+	#mv ctrl-up.csv ${contr}.genes.ctrl.csv
+	#mv sigpeaks.csv ${contr}.genes.sig.csv
+	csvtoxls.py -q ${contr}.genes.xlsx test-up.csv ctrl-up.csv
+	"""
+}
+
+Channel
+	.from combine_genediff_counts_ch
+	.reduce("") { a, b -> a + " " + b }
+	.set { combined_genediff_counts }
+
 /* ** Write final HTML report. ** */
 Channel
 	.from combine_cond_stats_ch
@@ -878,11 +1008,13 @@ process Report {
 	tuple factors, allstats, allreads from report_stats
 	val condstats from combined_cond_stats
 	val contrcounts from combined_contr_counts
+	val diffgenecounts from combined_genediff_counts
 
 	script:
 	"""
 	cat $condstats > all-contr-stats.txt
 	cat $contrcounts > all-contr-counts.txt
+	cat $diffgenecounts > all-genediff-counts.txt
 	cp $frips $factors $allstats $allreads .
 	URL="http://epigenomegateway.wustl.edu/browser/?genome=${params.hubOrganism}&datahub=${params.hubURL}/${params.hubName}/"
 	dasatools.py report ${workflow.launchDir}/${params.samples} ${workflow.launchDir}/${params.contrasts} \

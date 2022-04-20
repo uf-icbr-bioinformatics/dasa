@@ -185,6 +185,7 @@ def parseCoords(s):
     return (s[:p1], s[p1+1:p2], s[p2+1:])
 
 def extractSignificant(diffpeaks, log2fc, pval):
+    nin = 0
     up = []
     dn = []
     with open(diffpeaks, "r") as f, open("sigpeaks.csv", "w") as out, open("sigpeaks.bedGraph", "w") as bed:
@@ -195,6 +196,7 @@ def extractSignificant(diffpeaks, log2fc, pval):
             try:
                 fc = float(line[2])
                 p  = float(line[6])
+                nin += 1
             except ValueError: # Some P-values are NA
                 continue
             (chrom, start, end) = parseCoords(line[0].strip('"'))
@@ -206,6 +208,7 @@ def extractSignificant(diffpeaks, log2fc, pval):
                     dn.append((chrom, start, end, -fc, p))
                 out.write("{}\t{}\t{}\t{}\t{}\n".format(chrom, start, end, fc, p))
 
+        sys.stderr.write("{} in, {} up, {} down\n".format(nin, len(up), len(dn)))
         up.sort(key=lambda s: s[3], reverse=True)
         dn.sort(key=lambda s: s[3], reverse=True)
         with open("test-up.csv", "w") as out:
@@ -405,6 +408,8 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl, fl
                         writeTable4(out, contrasts, baseurl)
                     elif code == "Table5":
                         writeTable5(out, contrasts, flags)
+                    elif code == "Table6":
+                        writeTable6(out, contrasts, flags)
                     else:
                         out.write(line)
                 else:
@@ -449,8 +454,8 @@ def writeTable1(out, samples):
 
 def writeTable2(out, baseurl):
     out.write("""<TR>
-  <TD align='center' width='50%'><A href='{}/peaks.json'>SAMPLES</A></TD>
-  <TD align='center'><A href='{}/condpeaks.json'>CONDITIONS</A></TD>
+  <TD align='center' width='50%'><A href='{}/peaks.json' target='washu'>SAMPLES</A></TD>
+  <TD align='center'><A href='{}/condpeaks.json' target='washu'>CONDITIONS</A></TD>
 </TR>""".format(baseurl, baseurl))
 
 def writeTable3(out, contrasts):
@@ -472,8 +477,18 @@ def writeTable4(out, contrasts, baseurl):
             contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]),
             linkify("data/" + label + "/", label + "-diffpeaks.csv"),
             linkify(baseurl, label + ".json")))
-        
+    
 def writeTable5(out, contrasts, flags):
+    contrdata = toDict(readTable("all-genediff-counts.txt"))
+    out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
+    out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
+    for contr in contrasts:
+        label = contr[0] + ".vs." + contr[1]
+        ctrdata = contrdata[label]
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
+            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".genes.xlsx")))
+    
+def writeTable6(out, contrasts, flags):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
@@ -483,6 +498,38 @@ def writeTable5(out, contrasts, flags):
             linkify("plots/" + label, label + ".TSS.png") if "T" in flags else "-",
             linkify("plots/" + label, label + ".testpeaks.png"),
             linkify("plots/" + label, label + ".ctrlpeaks.png")))
+
+# Gene matrix
+
+def geneMatrix(samplesfile, factorsfile):
+    samples = readTable(samplesfile)
+    samplenames = [smp[1] for smp in samples]
+    factors = readFactors(factorsfile)
+
+    conds = []
+    labels = []
+    idx = 0
+    cond = ""
+    for smp in samples:
+        if smp[0] != cond:
+            conds.append('"' + smp[0] + '"')
+            cond = smp[0]
+            idx += 1
+        labels.append(idx)
+    with open("levels.txt", "w") as out:
+        out.write(",".join(conds) + "\n")
+    with open("labels.txt", "w") as out:
+        out.write(",".join([str(x) for x in labels]) + "\n")
+        
+    sys.stdout.write("#Gene\t" + "\t".join(samplenames) + "\n")
+    c = CSVreader(sys.stdin)
+    prevkey = ""
+    for row in c:
+        key = row[0] + ":" + row[1] + "-" + row[2]
+        if key == prevkey:
+            continue
+        sys.stdout.write("\t".join(row[4:]) + "\n")
+        prevkey = key
 
 def main(cmd, args):
     if cmd == "convert":
@@ -499,6 +546,8 @@ def main(cmd, args):
         combineChromSizes(args)
     elif cmd == "factors":
         computeFactors(args[0], args[1])
+    elif cmd == "gmatrix":
+        geneMatrix(args[0], args[1])
     elif cmd == "frip":
         computeFrip(args[0], args[1])
     elif cmd == "hubs":
