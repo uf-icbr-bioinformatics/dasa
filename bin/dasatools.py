@@ -486,8 +486,8 @@ def writeTable5(out, contrasts, flags):
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
-        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{} / {}</td></tr>\n".format(
-            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".genes.test.csv"), linkify("data/" + label + "/", label + ".genes.ctrl.csv")))
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
+            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".genes.xlsx")))
     
 def writeTable6(out, contrasts, flags):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")

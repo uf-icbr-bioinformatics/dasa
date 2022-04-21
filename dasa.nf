@@ -966,6 +966,7 @@ process ExtractSignificantGenes {
 
 	output:
 	file("genediff-counts.txt") into combine_genediff_counts_ch
+	file("${contr}.genes.xlsx")
 
 	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "*.xlsx"
 
@@ -1014,10 +1015,10 @@ process Report {
 	script:
 	"""
 	mkdir -p ${outdir}/tmp
-	cat $condstats > ${outdir}/tmp/all-contr-stats.txt
-	cat $contrcounts > ${outdir}/tmp/all-contr-counts.txt
-	cat $diffgenecounts > ${outdir}/tmp/all-genediff-counts.txt
-	cp $frips $factors $allstats $allreads ${outdir}/tmp/
+	cat $condstats > all-contr-stats.txt
+	cat $contrcounts > all-contr-counts.txt
+	cat $diffgenecounts > all-genediff-counts.txt
+	cp $frips $factors $allstats $allreads .
 	URL="http://epigenomegateway.wustl.edu/browser/?genome=${params.hubOrganism}&datahub=${params.hubURL}/${params.hubName}/"
 	dasatools.py report ${workflow.launchDir}/${params.samples} ${workflow.launchDir}/${params.contrasts} \
           $outdir ${params.reportTemplate} "${params.reportName}" \$URL
