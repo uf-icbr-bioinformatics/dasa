@@ -886,6 +886,9 @@ process GeneMatrix {
 	output:
 	tuple file("gene-matrix.txt"), file("levels.txt"), file("labels.txt") into genediff_ch
 
+	when:
+	params.tssfile
+
 	"""
 #!/bin/bash
 
@@ -978,7 +981,7 @@ process ExtractSignificantGenes {
 	echo -e "$contr\t\$N1\t\$N2\t\$N3" > genediff-counts.txt
 	cut -f 1,4- test-up.csv > ${contr}.genes.test.csv
 	cut -f 1,4- ctrl-up.csv > ${contr}.genes.ctrl.csv
-	dasatools.py xlsx ${contr}.genes.xlsx ${contr}.genes.test.csv ${contr}.genes.ctrl.csv
+	dasatools.py xlsx ${contr}.genes.xlsx ${contr}.genes.test.csv:Increased_in_test ${contr}.genes.ctrl.csv:Increased_in_ctrl
 	"""
 }
 
@@ -1010,7 +1013,7 @@ process Report {
 
 	script:
 	"""
-	mkdir ${outdir}/tmp
+	mkdir -p ${outdir}/tmp
 	cat $condstats > ${outdir}/tmp/all-contr-stats.txt
 	cat $contrcounts > ${outdir}/tmp/all-contr-counts.txt
 	cat $diffgenecounts > ${outdir}/tmp/all-genediff-counts.txt

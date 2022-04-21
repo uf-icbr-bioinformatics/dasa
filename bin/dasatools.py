@@ -541,8 +541,13 @@ def toExcel(filenames):
     workbook = xlsxwriter.Workbook(dest, {'strings_to_numbers': True})
     bold = workbook.add_format({'bold': 1})
     for src in srcs:
+        if ":" in src:
+            parts = src.split(":")
+            src = parts[0]
+            sname = parts[1].replace("_", " ")
+        else:
+            sname = os.path.splitext(os.path.split(src)[1])[0]
         sys.stderr.write("+ {}\n".format(src))
-        sname = os.path.splitext(os.path.split(src)[1])[0]
         ws = workbook.add_worksheet(sname)
         r = c = 0
         with open(src, "r") as f:
