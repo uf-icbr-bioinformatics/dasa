@@ -3,6 +3,7 @@
 import sys
 import csv
 import os.path
+import xlsxwriter
 from collections import defaultdict
 
 PYVER = sys.version_info.major
@@ -531,6 +532,32 @@ def geneMatrix(samplesfile, factorsfile):
         sys.stdout.write("\t".join(row[4:]) + "\n")
         prevkey = key
 
+# Convert tab-delimited files to excel
+
+def toExcel(filenames):
+    dest = filenames[0]
+    srcs = filenames[1:]
+    sys.stderr.write("Writing {}...\n".format(dest))
+    workbook = xlsxwriter.Workbook(dest, {'strings_to_numbers': True})
+    bold = workbook.add_format({'bold': 1})
+    for src in srcs:
+        sys.stderr.write("+ {}\n".format(src))
+        sname = os.path.splitext(os.path.split(src)[1])[0]
+        ws = workbook.add_worksheet(sname)
+        r = c = 0
+        with open(src, "r") as f:
+            reader = csv.reader(f, delimiter='\t')
+            for row in reader:
+                c = 0
+                for col in row:
+                    if r == 0:
+                        ws.write(r, c, col, bold)
+                    else:
+                        ws.write(r, c, col)
+                    c += 1
+                r += 1
+    workbook.close()
+
 def main(cmd, args):
     if cmd == "convert":
         smp = args[0]
@@ -554,6 +581,8 @@ def main(cmd, args):
         writeHubs(args[0], args[1], args[2], args[3])
     elif cmd == "report":
         writeReport(args[0], args[1], args[2], args[3], args[4], args[5])
+    elif cmd == "xlsx":
+        toExcel(args)
     else:
         sys.stderr.write("Missing dasatools.py command!\n")
         sys.exit(1)
