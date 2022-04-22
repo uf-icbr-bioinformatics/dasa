@@ -972,7 +972,7 @@ process ExtractSignificantGenes {
 
 	"""
 	#!/bin/bash
-	dasatools.py sig $genediff ${params.log2fc} ${params.pvalue}
+	dasatools.py gsig $genediff ${params.log2fc} ${params.pvalue}
 	N1=\$(grep -c ^ sigpeaks.csv)
 	N2=\$(grep -c ^ test-up.csv)
 	N3=\$(grep -c ^ ctrl-up.csv)
@@ -980,9 +980,7 @@ process ExtractSignificantGenes {
 	N2=\$((N2-1))
 	N3=\$((N3-1))
 	echo -e "$contr\t\$N1\t\$N2\t\$N3" > genediff-counts.txt
-	cut -f 1,4- test-up.csv > ${contr}.genes.test.csv
-	cut -f 1,4- ctrl-up.csv > ${contr}.genes.ctrl.csv
-	dasatools.py xlsx ${contr}.genes.xlsx ${contr}.genes.test.csv:Increased_in_test ${contr}.genes.ctrl.csv:Increased_in_ctrl
+	dasatools.py xlsx ${contr}.genes.xlsx test-up.csv:Increased_in_test ctrl-up.csv:Increased_in_ctrl
 	"""
 }
 

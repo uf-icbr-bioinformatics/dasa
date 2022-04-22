@@ -222,6 +222,42 @@ def extractSignificant(diffpeaks, log2fc, pval):
             for rec in dn:
                 out.write("\t".join([str(s) for s in rec]) + "\n")
 
+def extractSignificantGenes(diffpeaks, log2fc, pval):
+    nin = 0
+    up = []
+    dn = []
+    with open(diffpeaks, "r") as f, open("sigpeaks.csv", "w") as out:
+        out.write("#Gene\tlog2(FC)\tP-value\n")
+        f.readline()
+        c = CSVreader(f)
+        for line in c:
+            gname = line[0]
+            try:
+                fc = float(line[2])
+                p  = float(line[6])
+                nin += 1
+            except ValueError: # Some P-values are NA
+                continue
+            if abs(fc) >= log2fc and p <= pval:
+                if fc > 0:
+                    up.append((gname, fc, p))
+                else:
+                    dn.append((gname, -fc, p))
+                out.write("{}\t{}\t{}\n".format(gname, fc, p))
+
+        sys.stderr.write("{} in, {} up, {} down\n".format(nin, len(up), len(dn)))
+        up.sort(key=lambda s: s[1], reverse=True)
+        dn.sort(key=lambda s: s[1], reverse=True)
+        with open("test-up.csv", "w") as out:
+            out.write("#Gene\tlog2(FC)\tP-value\n")
+            for rec in up:
+                out.write("\t".join([str(s) for s in rec]) + "\n")
+
+        with open("ctrl-up.csv", "w") as out:
+            out.write("#Gene\tlog2(FC)\tP-value\n")
+            for rec in dn:
+                out.write("\t".join([str(s) for s in rec]) + "\n")
+
 def combineChromSizes(filenames):
     sizes = {}
     for filename in filenames:
@@ -574,6 +610,8 @@ def main(cmd, args):
         writeMatrix(args[0], args[1], args[2], args[3], args[4:])
     elif cmd == "sig":
         extractSignificant(args[0], float(args[1]), float(args[2]))
+    elif cmd == "gsig":
+        extractSignificantGenes(args[0], float(args[1]), float(args[2]))
     elif cmd == "sizes":
         combineChromSizes(args)
     elif cmd == "factors":
