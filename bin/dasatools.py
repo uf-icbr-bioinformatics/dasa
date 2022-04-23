@@ -374,6 +374,7 @@ def writeHubs(samplesfile, contrastsfile, outdir, url):
     trackurl = url
 
     # Hub for samples
+    sys.stderr.write("Writing peaks.json\n")
     with open(outdir + "/peaks.json", "w") as out:
         out.write("[\n")
         for smp in samples:
@@ -381,6 +382,7 @@ def writeHubs(samplesfile, contrastsfile, outdir, url):
         out.write("]\n")
         
     # Hub for conditions
+    sys.stderr.write("        condpeaks.json\n")
     with open(outdir + "/condpeaks.json", "w") as out:
         out.write("[\n")
         for cond in conditions:
@@ -391,23 +393,24 @@ def writeHubs(samplesfile, contrastsfile, outdir, url):
     contr = readTable(contrastsfile)
     for pair in contr:
         label = "{}.vs.{}".format(pair[0], pair[1])
+        sys.stderr.write("        {}.json\n".format(label))
         with open("{}/{}.json".format(outdir, label), "w") as out:
             out.write("[\n")
             out.write(hubentry({"smp": pair[0], "url": trackurl}))
             out.write(hubentry({"smp": pair[1], "url": trackurl}))
-            out.write(hubentry({"smp": label, "url": trackurl}))
+            #out.write(hubentry({"smp": label, "url": trackurl}))
             out.write("""{{
   "type": "bigwig",
-  "name": "{smp}",
+  "name": "{lab}",
   "height": 50,
   "group": 3,
   "colorpositive": "#FF0000",
   "colornegative": "#0000FF",
   "horizontalLines": [{{"value": 0, "color": "#000000"}}],
   "mode": "show",
-  "url": "{url}/{smp}/{smp}.diff.bw"
+  "url": "{url}/{lab}/{lab}.bw"
 }}
-""".format(**{"smp": label, "url": trackurl}))
+""".format(**{"lab": label, "url": trackurl}))
             out.write("]\n")
 
 ## Write final html report and README

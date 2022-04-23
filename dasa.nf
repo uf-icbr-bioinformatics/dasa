@@ -1012,7 +1012,6 @@ process Report {
 
 	script:
 	"""
-	mkdir -p ${outdir}/tmp
 	cat $condstats > all-contr-stats.txt
 	cat $contrcounts > all-contr-counts.txt
 	cat $diffgenecounts > all-genediff-counts.txt
