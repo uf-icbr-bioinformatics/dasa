@@ -23,6 +23,8 @@ params.contrasts = "CONTRASTS"
 params.merge_mode = "I"
 params.log2fc = 1.0
 params.pvalue = 0.01
+params.log2fc_genes = 1.0
+params.pvalue_genes = 0.01
 params.reportDir = "Report"
 params.deeptools = true
 params.washu = true
@@ -73,6 +75,10 @@ Analysis options:
   --log2fc          Threshold on log2(fold change) for differential analysis. Default: 1.0.
 
   --pvalue          Threshold on FDR-corrected P-value for differential analysis. Default: 0.01.
+
+  --log2fc_genes    Threshold on log2(fold change) for differential TSS accessibility analysis. Default: 1.0.
+
+  --pvalue_genes    Threshold on FDR-corrected P-value for differential TSS accessibility analysis. Default: 0.01.
 
   --merge_mode      Determines which area of partially-overlapping peaks to use in differential 
                     analysis. Can be either "I" (intersecting part is used) or "U" (the union of
@@ -656,7 +662,8 @@ process CondBEDtoBB {
 	script:
 	"""
 	samtools idxstats $bamfile | cut -f 1,2 | grep -v _ | grep -v ERCC > chrom.sizes
-	bedToBigBed -type=bed3 -tab $bedfile chrom.sizes ${cond}.bb
+	dasatools.py convert $cond $bedfile temp.bed
+	bedToBigBed -type=bed3+3 -tab temp.bed chrom.sizes ${cond}.bb
 	"""
 }
 
@@ -972,7 +979,7 @@ process ExtractSignificantGenes {
 
 	"""
 	#!/bin/bash
-	dasatools.py gsig $genediff ${params.log2fc} ${params.pvalue}
+	dasatools.py gsig $genediff ${params.log2fc_genes} ${params.pvalue_genes}
 	N1=\$(grep -c ^ sigpeaks.csv)
 	N2=\$(grep -c ^ test-up.csv)
 	N3=\$(grep -c ^ ctrl-up.csv)

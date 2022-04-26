@@ -40,6 +40,7 @@ def convertPeaks(peaksfile, bedfile):
                 if bchrom != chrom:
                     if end > 0:
                         out.write("{}\t{}\t{}\treg{}\t{}\t+\n".format(chrom, start, end, regnum, regnum))
+                        #out.write("{}\t{}\t{}\tid:{}\n".format(chrom, start, end, regnum))
                         regnum += 1
                     chrom = bchrom
                     start = 0
@@ -61,12 +62,14 @@ def convertPeaks(peaksfile, bedfile):
                     # Start new region
                     tot += (end - start)
                     if end > 0:
+                        #out.write("{}\t{}\t{}\tid:{}\n".format(chrom, start, end, regnum))
                         out.write("{}\t{}\t{}\treg{}\t{}\t+\n".format(chrom, start, end, regnum, regnum))
                         regnum += 1
                     start = bstart
                     end = bend
 
             out.write("{}\t{}\t{}\treg{}\t{}\t+\n".format(chrom, start, end, regnum, regnum))
+            #out.write("{}\t{}\t{}\tid:{}\n".format(chrom, start, end, regnum))
             tot += (end - start)
     return (tot, regnum)
 
