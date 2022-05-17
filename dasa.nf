@@ -28,7 +28,10 @@ params.pvalue_genes = 0.01
 params.reportDir = "Report"
 params.deeptools = true
 params.washu = true
-params.tssfile = false
+params.genesfile = false
+params.tss_range = 2000
+params.gene_body_upstream = 1000
+params.gene_body_downstream = 1000
 
 /* For WashU hub creation */
 params.hubURL = "http://lichtlab.cancer.ufl.edu/reports/"
@@ -50,8 +53,7 @@ log.info """Report template: ${params.reportTemplate}"""
 samplesfile = file(params.samples, checkIfExists: true)
 contrastsfile = file(params.contrasts, checkIfExists: true)
 outdir = "${workflow.launchDir}/${params.reportDir}/"
-tssfile = "${params.tssfile}"
-log.info """TSS file: ${tssfile}"""
+log.info """Genes file: ${params.genesfile}"""
 
 /* Functions */
 
@@ -84,7 +86,8 @@ Analysis options:
                     analysis. Can be either "I" (intersecting part is used) or "U" (the union of
                     the two peaks is used). Default: I.
 
-  --tssfile         A file containing locations of Transcription Start Sites (optional).
+  --genesfile       A file containing locations of genes. Should be a tab-delimited file with five columns:
+                    chromosome, start, end, strand, name.
 
 Report options:
 
@@ -166,7 +169,7 @@ Channel
 	.fromPath(contrastsfile)
 	.splitCsv(header:false, sep:'\t')
 	.map( row -> tuple(row[0] + ".vs." + row[1], row[0], row[1]) )
-	.into { contrasts_ch; contrasts_ch_2; contrasts_ch_3; contrasts_ch4; contr_for_tornado_ch; contr_for_scatterplot_ch; contr_for_genediff } /* TEST.vs.CTRL, TEST, CTRL */
+	.into { contrasts_ch; contrasts_ch_2; contrasts_ch_3; contrasts_ch4; contr_for_tornado_ch; contr_for_scatterplot_ch; contr_for_genediff; contr_for_genebodydiff } /* TEST.vs.CTRL, TEST, CTRL */
 
 Channel
 	.from contrasts_ch4
@@ -208,6 +211,37 @@ process InitializeSamples {
 	dasatools.py convert ${smp} $xlsfile \$bedfile >> ${smp}-convert-stats.txt
 	"""
 }
+
+/* ** Generate file of TSS and gene body regions ** */
+
+process TSSRegions {
+	executor "local"
+
+	output:
+	file("tss-regions.txt") into tss_plots, tss_matrix
+
+	script:
+	"""
+	#!/bin/bash
+
+	dasatools.py regions ${params.genesfile} tss-regions.txt t ${params.tss_range} ${params.tss_range}
+	"""
+}
+
+process GeneRegions {
+	executor "local"
+
+	output:
+	file("gene-regions.txt") into gene_matrix
+
+	script:
+	"""
+	#!/bin/bash
+
+	dasatools.py regions ${params.genesfile} gene-regions.txt b ${params.gene_body_upstream} ${params.gene_body_downstream}
+	"""
+}
+
 
 /* ** Determine number of reads for each BAM file ** */
 process CountReads {
@@ -290,7 +324,7 @@ process ComputeFactors {
 	val allreads from combined_nreads
 
 	output:
-	file("sample-factors.txt") into factors_ch, factors_ch2, factors_ch3
+	file("sample-factors.txt") into factors_ch, factors_ch2, factors_ch3, factors_ch4
 	file("all-sample-reads.txt") into nreads_for_frip_ch
 	tuple file("sample-factors.txt"), file("all-sample-stats.txt"), file("all-sample-reads.txt") into report_stats
 
@@ -816,19 +850,17 @@ fi
 }
 
 process TSStornado {
-	time "2h"
+	time "4h"
 	memory "2G"
 
 	input:
 	tuple label, samples, bigwigs, upregions, dnregions from tss_tornado_ch
+	file(tssfile) from tss_plots
 
 	output:
 	file("*.png")
 
 	publishDir "$outdir/plots/$label/", mode: "copy", pattern: "*.png"
-
-	when:
-	params.tssfile
 
 	script:
 	"""
@@ -840,7 +872,7 @@ function draw_tornado() {
   REGIONS=\$2
   BW1=\$3
   BW2=\$4
-  D=1000
+  D=${params.tss_range}
 
   computeMatrix reference-point -p max -R \$REGIONS -S \$BW1 \$BW2 -o \${NAME}.mat0.gz \
     --referencePoint center \
@@ -881,20 +913,18 @@ process SizeScatterplot {
 	"""
 }
 
-/* ** Differential gene accessibility analysis. ** */
+/* ** Differential gene accessibility analysis - at TSS. ** */
 
 process GeneMatrix {
-	time "2h"
+	time "4h"
 	cpus 20
 
 	input:
 	val samplefactors from factors_ch3
+	file(tssfile) from tss_matrix
 
 	output:
 	tuple file("gene-matrix.txt"), file("levels.txt"), file("labels.txt") into genediff_ch
-
-	when:
-	params.tssfile
 
 	"""
 #!/bin/bash
@@ -904,7 +934,7 @@ for bam in \$(cut -f 4 ${samplesfile}); do
   BAMS="\$BAMS ${workflow.launchDir}/\$bam"
 done
 
-split -l 2000 ${params.tssfile} genes-
+split -l 2000 ${tssfile} genes-
 
 for glist in genes-*;
 do
@@ -973,7 +1003,7 @@ process ExtractSignificantGenes {
 
 	output:
 	file("genediff-counts.txt") into combine_genediff_counts_ch
-	file("${contr}.genes.xlsx")
+	file("${contr}.TSS.xlsx")
 
 	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "*.xlsx"
 
@@ -987,7 +1017,7 @@ process ExtractSignificantGenes {
 	N2=\$((N2-1))
 	N3=\$((N3-1))
 	echo -e "$contr\t\$N1\t\$N2\t\$N3" > genediff-counts.txt
-	dasatools.py xlsx ${contr}.genes.xlsx test-up.csv:Increased_in_test ctrl-up.csv:Increased_in_ctrl
+	dasatools.py xlsx ${contr}.TSS.xlsx test-up.csv:Increased_in_test ctrl-up.csv:Increased_in_ctrl sigpeaks.csv:All_genes
 	"""
 }
 
@@ -995,6 +1025,119 @@ Channel
 	.from combine_genediff_counts_ch
 	.reduce("") { a, b -> a + " " + b }
 	.set { combined_genediff_counts }
+
+/* ** Differential gene accessibility analysis - at gene bodies. ** */
+
+process GeneBodyMatrix {
+	time "4h"
+	cpus 20
+
+	input:
+	val samplefactors from factors_ch4
+	file(genebodyfile) from gene_matrix
+
+	output:
+	tuple file("genebody-matrix.txt"), file("levels.txt"), file("labels.txt") into genebodydiff_ch
+
+	"""
+#!/bin/bash
+
+BAMS=""
+for bam in \$(cut -f 4 ${samplesfile}); do
+  BAMS="\$BAMS ${workflow.launchDir}/\$bam"
+done
+
+split -l 2000 ${genebodyfile} genes-
+
+for glist in genes-*;
+do
+  bedtools multicov -bams \$BAMS -bed \${glist} > \${glist}.matrix.txt &
+done
+wait
+cat *.matrix.txt | dasatools.py gmatrix ${samplesfile} ${samplefactors} > genebody-matrix.txt
+"""
+}
+
+Channel
+	.from genebodydiff_ch
+	.combine(contr_for_genebodydiff)
+	.set { genebodydiff }
+
+process GeneBodyDiff {
+	time "2h"
+	executor "local"
+
+	input:
+	tuple genematrix, levelsfile, labelsfile, contr, testcond, ctrlcond from genebodydiff
+
+	output:
+	tuple contr, file("genebodydiff.csv") into extract_siggenebody_ch
+
+	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "genebodydiff.csv", saveAs: { filename -> "${contr}-${filename}" }
+
+	script:
+	levels = file(levelsfile).text
+	labels = file(labelsfile).text
+
+	"""
+#!/usr/bin/env Rscript
+
+library("DESeq2")
+
+datafile = "$genematrix"
+message("Starting read csv")
+counts = as.matrix(read.csv(datafile, sep='\t', row.names=1))
+message("Read csv done")
+levels = c($levels)
+labels = c($labels)
+#message(1)
+sampleTable = data.frame(condition=factor(levels[labels]))
+rownames(sampleTable) = colnames(counts)
+#message(2)
+dds = DESeqDataSetFromMatrix(countData = counts, colData = sampleTable, design = ~ condition)
+#message(2.5)
+dds = estimateSizeFactors(dds)
+#message(3)
+keep = rowMeans(counts(dds)) >= 5
+dds = dds[keep,]
+dds = DESeq(dds)
+#message(4)
+res = results(dds, contrast=c("condition", "$testcond", "$ctrlcond"))
+#message(5)
+write.table(res, file="genebodydiff.csv", sep='\t')
+        """
+}
+
+process ExtractSignificantGeneBodies {
+	executor "local"
+
+	input:
+	tuple contr, genediff from extract_siggenebody_ch
+
+	output:
+	file("genebodydiff-counts.txt") into combine_genebodydiff_counts_ch
+	file("${contr}.genes.xlsx")
+
+	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "*.xlsx"
+
+	"""
+	#!/bin/bash
+	dasatools.py gsig $genediff ${params.log2fc_genes} ${params.pvalue_genes}
+	N1=\$(grep -c ^ sigpeaks.csv)
+	N2=\$(grep -c ^ test-up.csv)
+	N3=\$(grep -c ^ ctrl-up.csv)
+	N1=\$((N1-1))
+	N2=\$((N2-1))
+	N3=\$((N3-1))
+	echo -e "$contr\t\$N1\t\$N2\t\$N3" > genebodydiff-counts.txt
+	dasatools.py xlsx ${contr}.genes.xlsx test-up.csv:Increased_in_test ctrl-up.csv:Increased_in_ctrl sigpeaks.csv:All_genes
+	"""
+}
+
+Channel
+	.from combine_genebodydiff_counts_ch
+	.reduce("") { a, b -> a + " " + b }
+	.set { combined_genebodydiff_counts }
 
 /* ** Write final HTML report. ** */
 Channel
@@ -1016,12 +1159,15 @@ process Report {
 	val condstats from combined_cond_stats
 	val contrcounts from combined_contr_counts
 	val diffgenecounts from combined_genediff_counts
+	val diffgenebodycounts from combined_genebodydiff_counts
 
 	script:
 	"""
 	cat $condstats > all-contr-stats.txt
 	cat $contrcounts > all-contr-counts.txt
 	cat $diffgenecounts > all-genediff-counts.txt
+	cat $diffgenebodycounts > all-genebodydiff-counts.txt
+
 	cp $frips $factors $allstats $allreads .
 	URL="http://epigenomegateway.wustl.edu/browser/?genome=${params.hubOrganism}&datahub=${params.hubURL}/${params.hubName}/"
 	dasatools.py report ${workflow.launchDir}/${params.samples} ${workflow.launchDir}/${params.contrasts} \

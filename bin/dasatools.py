@@ -425,8 +425,9 @@ def getTag(s):
     else:
         return ""
 
-def linkify(path, name):
-    return "<A href='{}/{}'>{}</A>".format(path, name, name)
+def linkify(path, name, target=""):
+    tg = " target='{}'".format(target) if target else ""
+    return "<A href='{}/{}'{}>{}</A>".format(path, name, tg, name)
 
 def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl, flags="T"):
     samples = readTable(samplesfile)
@@ -453,6 +454,8 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl, fl
                         writeTable5(out, contrasts, flags)
                     elif code == "Table6":
                         writeTable6(out, contrasts, flags)
+                    elif code == "Table7":
+                        writeTable7(out, contrasts, flags)
                     else:
                         out.write(line)
                 else:
@@ -529,9 +532,19 @@ def writeTable5(out, contrasts, flags):
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
         out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
-            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".genes.xlsx")))
+            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".TSS.xlsx")))
     
 def writeTable6(out, contrasts, flags):
+    contrdata = toDict(readTable("all-genebodydiff-counts.txt"))
+    out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
+    out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
+    for contr in contrasts:
+        label = contr[0] + ".vs." + contr[1]
+        ctrdata = contrdata[label]
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
+            contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".genes.xlsx")))
+    
+def writeTable7(out, contrasts, flags):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
@@ -605,6 +618,36 @@ def toExcel(filenames):
                 r += 1
     workbook.close()
 
+def makeRegions(infile, outfile, code, upstream, downstream):
+    """Adjust regions contained in `infile' writing them to `outfile'. If code is 't', 
+output region is from 'upstream' bases before TSS to 'downstream' bases after it. If
+code is 'b', region is from 'upstream' before TSS to 'downstream' bases after TES.
+Strand (in column 4) is taken into account."""
+    with open(outfile, "w") as out:
+        with open(infile, "r") as f:
+            c = csv.reader(f, delimiter='\t')
+            for row in c:
+                if row[0][0] == '#':
+                    continue
+                start = int(row[1])
+                end   = int(row[2])
+                if code == 'b':
+                    if row[3] == "+":
+                        nstart = start - upstream
+                        nend   = end + downstream
+                    else:
+                        nstart = start - downstream
+                        nend   = end + upstream
+                elif code == 't':
+                    if row[3] == "+":
+                        nstart = start - upstream
+                        nend   = start + downstream
+                    else:
+                        nstart = end - downstream
+                        nend   = end + upstream
+                out.write("{}\t{}\t{}\t{}\t{}\n".format(row[0], max(nstart, 0), nend, row[3], row[4]))
+                
+
 def main(cmd, args):
     if cmd == "convert":
         smp = args[0]
@@ -632,6 +675,8 @@ def main(cmd, args):
         writeReport(args[0], args[1], args[2], args[3], args[4], args[5])
     elif cmd == "xlsx":
         toExcel(args)
+    elif cmd == "regions":
+        makeRegions(args[0], args[1], args[2], int(args[3]), int(args[4]))
     else:
         sys.stderr.write("Missing dasatools.py command!\n")
         sys.exit(1)

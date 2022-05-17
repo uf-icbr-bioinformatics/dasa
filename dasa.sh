@@ -11,7 +11,7 @@ then
   echo "If CONFIG file is specified, it should be in Nexflow config"
   echo "format (param = value) and can contain the following parameters:"
   echo 
-  echo "tssfile = path to file containing TSS coordinates for all genes"
+  echo "genesfile = path to file containing coordinates for all genes"
   echo "hubURL = URL where this genome browser hub will be hosted"
   echo "hubName = name of this genome browser hub"
   echo "hubOrganism = organism identified for this hub (e.g. hg38, mm10)"
