@@ -6,7 +6,7 @@
 </title>
 <style>
 TABLE {width: 80%; border-collapse: collapse; border: 2px solid black;}
-TD, TH {border: 1px solid grey}
+TD, TH {border: 1px solid grey; padding: 4px;}
 CAPTION {caption-side: bottom; font-size: small; padding-top: 10px; padding-bottom: 30px;}
 </style>
 <body>
@@ -36,9 +36,9 @@ this should be over 30%, and definitely not less than 20%.</caption>
 are merged, to form a set of comparable peaks. The number of aligned reads in each alignable peak is then computed for all replicates of the
 two conditions, to produce a peak size matrix. Finally, this matrix is analyzed with DESeq2 to identify peaks that are significantly higher
 in the test or in the control condition. The <i>Significant</i> column reports the number of comparable peaks showing a significant difference
-between test and control; the <i>Up in Test</i> and <i>Up in Ctrl<i> columns show the number of peaks that are higher in test and in the
-control condition respectively. The Excel files in the <i>Full results</i> column contain the position, fold change, and P-value for all
-significantly different peaks.</caption>
+between test and control; the <i>Up in Test</i> and <i>Up in Ctrl</i> columns show the number of peaks that are higher in test and in the
+control condition respectively. The Excel files in the <i>Peaks</i> column contain the position, fold change, and P-value for all
+significantly different peaks (Sig:) and for all peaks (All:).</caption>
 <!--Table4-->
 </table>
 <br>
@@ -53,12 +53,17 @@ significantly different peaks.</caption>
 </table>
 <br>
 <table>
-<caption><b>Table 7.</b> Plots based on contrast data. The plots in the <i>Peak sizes</i> column show a scatterplot of the size of common peaks
+<caption><b>Table 7.</b> Enhancers showing increased or decreased accessibility.</caption>
+<!--Table7-->
+</table>
+<br>
+<table>
+<caption><b>Table 8.</b> Plots based on contrast data. The plots in the <i>Peak sizes</i> column show a scatterplot of the size of common peaks
 in the Test and Control conditions.  Dots above the diagonal indicate that the peak is larger in the Test sample than in the Ctrl sample. <i>TSS</i>
 plots show the ATAC profile around transcription start sites in the Test and Control conditions. <i>Test Peaks</i> heatmaps show the profile of
 peaks that are significantly higher in Test (from Table 3) in both conditions. <i>Ctrl Peaks</i> shows the same information for peaks that are 
 higher in the Control condition.</caption>
-<!--Table7-->
+<!--Table8-->
 </table>
 <br>
 

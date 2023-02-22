@@ -2,11 +2,14 @@
 
 import sys
 import csv
+import shlex
 import os.path
 import xlsxwriter
 from collections import defaultdict
 
 PYVER = sys.version_info.major
+
+# Utils
 
 def CSVreader(stream):
     return csv.reader(stream, delimiter='\t')
@@ -192,8 +195,10 @@ def extractSignificant(diffpeaks, log2fc, pval):
     nin = 0
     up = []
     dn = []
-    with open(diffpeaks, "r") as f, open("sigpeaks.csv", "w") as out, open("sigpeaks.bedGraph", "w") as bed:
-        out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
+    header = "#Chrom\tStart\tEnd\tlog2(FC)\tP-value\tMean1\tMean2\n"
+    with open(diffpeaks, "r") as f, open("alldiffpeaks.csv", "w") as dout, open("sigpeaks.csv", "w") as out, open("sigpeaks.bedGraph", "w") as bed:
+        out.write(header)
+        dout.write(header)
         f.readline()
         c = CSVreader(f)
         for line in c:
@@ -203,25 +208,28 @@ def extractSignificant(diffpeaks, log2fc, pval):
                 nin += 1
             except ValueError: # Some P-values are NA
                 continue
+            mean1 = float(line[1])
+            mean2 = mean1 * fc**2
             (chrom, start, end) = parseCoords(line[0].strip('"'))
             bed.write("{}\t{}\t{}\t{}\n".format(chrom, start, end, fc))
+            dout.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(chrom, start, end, fc, p, mean1, mean2))
             if abs(fc) >= log2fc and p <= pval:
                 if fc > 0:
-                    up.append((chrom, start, end, fc, p))
+                    up.append((chrom, start, end, fc, p, mean1, mean2))
                 else:
-                    dn.append((chrom, start, end, -fc, p))
-                out.write("{}\t{}\t{}\t{}\t{}\n".format(chrom, start, end, fc, p))
+                    dn.append((chrom, start, end, -fc, p, mean1, mean2))
+                out.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(chrom, start, end, fc, p, mean1, mean2))
 
         sys.stderr.write("{} in, {} up, {} down\n".format(nin, len(up), len(dn)))
         up.sort(key=lambda s: s[3], reverse=True)
         dn.sort(key=lambda s: s[3], reverse=True)
         with open("test-up.csv", "w") as out:
-            out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
+            out.write(header)
             for rec in up:
                 out.write("\t".join([str(s) for s in rec]) + "\n")
 
         with open("ctrl-up.csv", "w") as out:
-            out.write("#Chrom\tStart\tEnd\tlog2(FC)\tP-value\n")
+            out.write(header)
             for rec in dn:
                 out.write("\t".join([str(s) for s in rec]) + "\n")
 
@@ -319,6 +327,47 @@ def computeFrip(fripsfile, nreadsfile):
             smp = line[0]
             nreads = int(line[1])
             sys.stdout.write("{}\t{}\t{}\t{}\n".format(smp, 1.0 * frips[smp] / nreads, frips[smp], nreads))
+
+## Code to read a nextflow config file and return it as a dict of dicts.
+
+def readNextflowConfig(filename):
+    dic = {}
+    with open(filename, "r") as f:
+        text = f.read().replace("\n", " ")
+    words = shlex.split(text)
+
+    state = 0
+    key = ""
+    key2 = ""
+
+    for w in words:
+        if w == '=':
+            continue
+
+        if state == 0:          # we're at top level, current work is top-level key
+            key = w
+            dic[key] = {}
+            state = 1
+        elif state == 1:
+            if w == '{':
+                state = 2
+            else:
+                sys.stderr.write("Error parsing `{}': '{{' expected, found '{}'.\n".format(filename, w))
+                return False
+        elif state == 2:
+            if w == '}':
+                state = 0
+            else:
+                key2 = w
+                state = 3
+        elif state == 3:
+            if w == '}':
+                sys.stderr.write("Error parsing `{}': word expected, found '}'.\n".format(filename))
+                return False
+            else:
+                dic[key][key2] = w
+                state = 2
+    return dic
 
 ## Code to write WashU hubs
 
@@ -429,11 +478,16 @@ def linkify(path, name, target=""):
     tg = " target='{}'".format(target) if target else ""
     return "<A href='{}/{}'{}>{}</A>".format(path, name, tg, name)
 
-def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl, flags="T"):
+def writeReport(samplesfile, contrastsfile, outdir, template, configfile): # template, title, baseurl, flags="T"):
+    params = readNextflowConfig(configfile)["params"]
+    template = params["reportTemplate"] if "reportTemplate" in params else template
+    title = params["reportTitle"]
+    params["washurl"] = "http://epigenomegateway.wustl.edu/browser/?genome={}&datahub={}/{}".format(params["hubOrganism"], params["hubURL"], params["hubName"])
+    outdir = params["reportDir"]
     samples = readTable(samplesfile)
     conditions = readIDs(samplesfile, unique=True)
     contrasts = readTable(contrastsfile)
-    indexfile = outdir + "/index.html"
+    indexfile = "index.html"
 
     with open(indexfile, "w") as out:
         with open(template, "r") as f:
@@ -445,26 +499,26 @@ def writeReport(samplesfile, contrastsfile, outdir, template, title, baseurl, fl
                     elif code == "Table1":
                         writeTable1(out, samples)
                     elif code == "Table2":
-                        writeTable2(out, baseurl)
+                        writeTable2(out, params)
                     elif code == "Table3":
                         writeTable3(out, contrasts)
                     elif code == "Table4":
-                        writeTable4(out, contrasts, baseurl)
+                        writeTable4(out, contrasts, params)
                     elif code == "Table5":
-                        writeTable5(out, contrasts, flags)
+                        writeTable5(out, contrasts, params)
                     elif code == "Table6":
-                        writeTable6(out, contrasts, flags)
+                        writeTable6(out, contrasts, params)
                     elif code == "Table7":
-                        writeTable7(out, contrasts, flags)
+                        writeTable7(out, contrasts, params)
+                    elif code == "Table8":
+                        writeTable8(out, contrasts, params)
                     else:
                         out.write(line)
                 else:
                     out.write(line)
 
-    readmefile = outdir + "/README"
-
-    with open(readmefile, "w") as out:
-        hubname = baseurl.rstrip("/").split("/")[-1]
+    with open("README", "w") as out:
+        hubname = params["hubName"]
         out.write("""DASA Results Directory
 
 The file "index.html" is the main output file. It should be opened with a web browser.
@@ -486,26 +540,26 @@ so that they can be accessed through the following URL:
   {}
 
 If configuration is correct, the links in Sections 2 and 4 of the HTML report will work properly.
-""".format(hubname, baseurl))
+""".format(params["hubName"], params["hubURL"]))
 
 def writeTable1(out, samples):
-    factors = toDict(readTable("sample-factors.txt"))
-    nreads = toDict(readTable("all-sample-reads.txt"))
-    stats = toDict(readTable("all-sample-stats.txt"))
-    frips = toDict(readTable("all-frips.txt"))
+    factors = toDict(readTable("data/sample-factors.txt"))
+    nreads = toDict(readTable("data/all-sample-reads.txt"))
+    stats = toDict(readTable("data/all-sample-stats.txt"))
+    frips = toDict(readTable("data/all-frips.txt"))
     out.write("<tr><th>Sample</th><th>Aligned reads</th><th>Open bases</th><th>Factor</th><th>Peaks</th><th>FRIP</th></tr>")
     for row in samples:
         smp = row[1]
         out.write("<tr><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,} bp</td><td align='right'>{:.3f}</td><td align='right'>{:,}</td><td align='right'>{:.1f}%</td></tr>\n".format(smp, int(nreads[smp][0]), int(stats[smp][0]), float(factors[smp][2]), int(stats[smp][1]), 100.0*float(frips[smp][0])))
 
-def writeTable2(out, baseurl):
+def writeTable2(out, params):
     out.write("""<TR>
   <TD align='center' width='50%'><A href='{}/peaks.json' target='washu'>SAMPLES</A></TD>
   <TD align='center'><A href='{}/condpeaks.json' target='washu'>CONDITIONS</A></TD>
-</TR>""".format(baseurl, baseurl))
+</TR>""".format(params["washurl"], params["washurl"]))
 
 def writeTable3(out, contrasts):
-    contrdata = toDict(readTable("all-contr-stats.txt"))
+    contrdata = toDict(readTable("data/all-contr-stats.txt"))
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Number of peaks</th><th>Avg size in Test</th><th>Avg size in Ctrl</th></tr>")
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
@@ -513,19 +567,24 @@ def writeTable3(out, contrasts):
         out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:.1f} bp</td><td align='right'>{:.1f} bp</td></tr>".format(
             contr[0], contr[1], int(ctrdata[0]), float(ctrdata[1]), float(ctrdata[2])))
 
-def writeTable4(out, contrasts, baseurl):
-    contrdata = toDict(readTable("all-contr-counts.txt"))
-    out.write("<tr><th>Test</th><th>Ctrl</th><th>Significant</th><th>Up in Test</th><th>Up in Ctrl</th><th>Full results</th><th>WashU hub</th></tr>")
+def writeTable4(out, contrasts, params):
+    contrdata = toDict(readTable("data/all-contr-counts.txt"))
+    out.write("<tr><th>Test</th><th>Ctrl</th><th>Significant</th><th>Up in Test</th><th>Up in Ctrl</th><th>Peaks</th><th>WashU hub</th></tr>")
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
-        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td><td align='center'>{}</td></tr>".format(
+        peaksetlink = """<BR><A target="_geneset" href="/tools/rs/index.cgi?cmd=add&name={}&source={}&org={}&gf={}">Create RegionSet</A>""".format(params["hubName"] + "-" + label, params["hubName"], params["hubOrganism"], 
+                                                                                                                                               params["hubURL"] + "/data/" + label + "/" + label + "-sigpeaks.csv")
+
+        out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>Sig: {}<BR>All: {}{}</td><td align='center'>{}</td></tr>".format(
             contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]),
-            linkify("data/" + label + "/", label + "-diffpeaks.csv"),
-            linkify(baseurl, label + ".json")))
+            linkify("data/" + label + "/", label + "-sigpeaks.xlsx"),
+            linkify("data/" + label + "/", label + "-diffpeaks.xlsx"),
+            peaksetlink if "sets" in params else "",
+            linkify(params["washurl"], label + ".json", target="washu")))
     
-def writeTable5(out, contrasts, flags):
-    contrdata = toDict(readTable("all-genediff-counts.txt"))
+def writeTable5(out, contrasts, params):
+    contrdata = toDict(readTable("data/all-genediff-counts.txt"))
     out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
     out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
     for contr in contrasts:
@@ -534,8 +593,8 @@ def writeTable5(out, contrasts, flags):
         out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
             contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".TSS.xlsx")))
     
-def writeTable6(out, contrasts, flags):
-    contrdata = toDict(readTable("all-genebodydiff-counts.txt"))
+def writeTable6(out, contrasts, params):
+    contrdata = toDict(readTable("data/all-genebodydiff-counts.txt"))
     out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
     out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
     for contr in contrasts:
@@ -543,15 +602,28 @@ def writeTable6(out, contrasts, flags):
         ctrdata = contrdata[label]
         out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
             contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".genes.xlsx")))
-    
-def writeTable7(out, contrasts, flags):
+
+def writeTable7(out, contrasts, params):
+    datafile = "data/all-enhancersdiff-counts.txt"
+    if os.path.isfile(datafile):
+        contrdata = toDict(readTable("data/all-enhancersdiff-counts.txt"))
+        out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
+        out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
+        for contr in contrasts:
+            label = contr[0] + ".vs." + contr[1]
+            ctrdata = contrdata[label]
+            out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
+                contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".enhancers.xlsx")))
+        
+
+def writeTable8(out, contrasts, flags):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         out.write("<tr><th>{}</th><th>{}</th><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td><td align='center'>{}</td></tr>".format(
             contr[0], contr[1], 
             linkify("plots/" + label, label + ".scatterplot.png"),
-            linkify("plots/" + label, label + ".TSS.png") if "T" in flags else "-",
+            linkify("plots/" + label, label + ".TSS.png"),
             linkify("plots/" + label, label + ".testpeaks.png"),
             linkify("plots/" + label, label + ".ctrlpeaks.png")))
 
@@ -672,7 +744,7 @@ def main(cmd, args):
     elif cmd == "hubs":
         writeHubs(args[0], args[1], args[2], args[3])
     elif cmd == "report":
-        writeReport(args[0], args[1], args[2], args[3], args[4], args[5])
+        writeReport(args[0], args[1], args[2], args[3], args[4])
     elif cmd == "xlsx":
         toExcel(args)
     elif cmd == "regions":
