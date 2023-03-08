@@ -551,7 +551,7 @@ process ExtractSignificant {
 	tuple label, diffpeaks from extract_sig_ch
 
 	output:
-	tuple label, file("sigpeaks.bedGraph") into bdg_to_bw_ch
+	tuple label, file("diffpeaks.bedGraph"), file("sigpeaks.bedGraph") into bdg_to_bw_ch
 	tuple label, file("test-up.csv"), file("ctrl-up.csv") into regions_to_tornado_ch
 	file("sigpeaks.csv")
 	file("sigpeaks.xlsx")
@@ -744,17 +744,19 @@ process BDGtoBW {
 	time "1h"
 
 	input:
-	tuple label, diffbdg from bdg_to_bw_ch
+	tuple label, diffbdg, sigbdg from bdg_to_bw_ch
 	file chromsizes from combined_chromsizes
 
 	output:
-	file("${label}.bw") into contr_bw_for_hub_ch
+	file("${label}.diff.bw") into contr_bw_for_hub_ch
+	file("${label}.sig.bw") into sig_bw_for_hub_ch
 
 	publishDir "$outdir/${params.hubName}/$label/", mode: "copy", pattern: "*.bw"
 
 	script:
 	"""
-	bedGraphToBigWig $diffbdg $chromsizes ${label}.bw
+	bedGraphToBigWig $diffbdg $chromsizes ${label}.diff.bw
+	bedGraphToBigWig $sigbdg $chromsizes ${label}.sig.bw
 	"""
 }
 
@@ -793,6 +795,11 @@ Channel
 	.last()
 	.set { contr_bw_for_hub }
 
+Channel
+	.from sig_bw_for_hub_ch
+	.last()
+	.set { sig_bw_for_hub }
+
 process MakeHubs {
 	executor "local"
 
@@ -802,6 +809,7 @@ process MakeHubs {
 	val d3 from cond_bw_for_hub
 	val d4 from cond_bb_for_hub
 	val d5 from contr_bw_for_hub
+	val d6 from sig_bw_for_hub
 
 	script:
 	"""

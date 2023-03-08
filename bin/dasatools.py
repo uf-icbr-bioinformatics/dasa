@@ -196,7 +196,7 @@ def extractSignificant(diffpeaks, log2fc, pval):
     up = []
     dn = []
     header = "#Chrom\tStart\tEnd\tlog2(FC)\tP-value\tMean1\tMean2\n"
-    with open(diffpeaks, "r") as f, open("alldiffpeaks.csv", "w") as dout, open("sigpeaks.csv", "w") as out, open("sigpeaks.bedGraph", "w") as bed:
+    with open(diffpeaks, "r") as f, open("alldiffpeaks.csv", "w") as dout, open("sigpeaks.csv", "w") as out, open("diffpeaks.bedGraph", "w") as diffbed, open("sigpeaks.bedGraph", "w") as sigbed:
         out.write(header)
         dout.write(header)
         f.readline()
@@ -211,7 +211,7 @@ def extractSignificant(diffpeaks, log2fc, pval):
             mean1 = float(line[1])
             mean2 = mean1 * fc**2
             (chrom, start, end) = parseCoords(line[0].strip('"'))
-            bed.write("{}\t{}\t{}\t{}\n".format(chrom, start, end, fc))
+            diffbed.write("{}\t{}\t{}\t{:.2f}\n".format(chrom, start, end, fc))
             dout.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(chrom, start, end, fc, p, mean1, mean2))
             if abs(fc) >= log2fc and p <= pval:
                 if fc > 0:
@@ -219,6 +219,7 @@ def extractSignificant(diffpeaks, log2fc, pval):
                 else:
                     dn.append((chrom, start, end, -fc, p, mean1, mean2))
                 out.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(chrom, start, end, fc, p, mean1, mean2))
+                sigbed.write("{}\t{}\t{}\t{:.2f}\n".format(chrom, start, end, fc))
 
         sys.stderr.write("{} in, {} up, {} down\n".format(nin, len(up), len(dn)))
         up.sort(key=lambda s: s[3], reverse=True)
@@ -392,7 +393,9 @@ def readTable(filename):
 def toDict(table):
     d = {}
     for row in table:
-        d[row[0]] = row[1:]
+        k = row[0]
+        if k:
+            d[k] = row[1:]
     return d
 
 def hubentry(params):
@@ -460,7 +463,19 @@ def writeHubs(samplesfile, contrastsfile, outdir, url):
   "colornegative": "#0000FF",
   "horizontalLines": [{{"value": 0, "color": "#000000"}}],
   "mode": "show",
-  "url": "{url}/{lab}/{lab}.bw"
+  "url": "{url}/{lab}/{lab}.sig.bw"
+}},
+""".format(**{"lab": label, "url": trackurl}))
+            out.write("""{{
+  "type": "bigwig",
+  "name": "{lab}",
+  "height": 50,
+  "group": 3,
+  "colorpositive": "#FF0000",
+  "colornegative": "#0000FF",
+  "horizontalLines": [{{"value": 0, "color": "#000000"}}],
+  "mode": "show",
+  "url": "{url}/{lab}/{lab}.diff.bw"
 }}
 """.format(**{"lab": label, "url": trackurl}))
             out.write("]\n")
@@ -607,14 +622,14 @@ def writeTable7(out, contrasts, params):
     datafile = "data/all-enhancersdiff-counts.txt"
     if os.path.isfile(datafile):
         contrdata = toDict(readTable("data/all-enhancersdiff-counts.txt"))
-        out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
-        out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
-        for contr in contrasts:
-            label = contr[0] + ".vs." + contr[1]
-            ctrdata = contrdata[label]
-            out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
-                contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".enhancers.xlsx")))
-        
+        if contrdata:
+            out.write("<tr><th rowspan='2'>Test</th><th rowspan='2'>Ctrl</th><th rowspan='2'>Significant</th><th colspan='2'>Accessibility</th><th rowspan='2'>Genes</th></tr>\n")
+            out.write("<tr><th>Increased</th><th>Decreased</th></tr>\n")
+            for contr in contrasts:
+                label = contr[0] + ".vs." + contr[1]
+                ctrdata = contrdata[label]
+                out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>{}</td></tr>\n".format(
+                    contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]), linkify("data/" + label + "/", label + ".enhancers.xlsx")))
 
 def writeTable8(out, contrasts, flags):
     out.write("<tr><th>Test</th><th>Ctrl</th><th>Peak sizes</th><th>TSS</th><th>Test Peaks</TH><TH>Ctrl Peaks</TH></tr>")
