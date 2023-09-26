@@ -1,11 +1,13 @@
 #!/bin/bash
 
+#set -e
+
 SAMPLES=$1
 CONTRASTS=$2
 #CONFIG=$3
 shift 2
 
-if [[ "$SAMPLES" == "" ]];
+if [[ -z "$SAMPLES" ]];
 then
 cat <<EOF
 
@@ -67,12 +69,18 @@ EOF
   exit 1
 fi
 
-nextflow run -resume $* \
-  -N ${USER}@ufl.edu -with-report dasa-report.html \
+if [[ ! -f nextflow.config ]];
+then 
+  echo "No nextflow.config file!"
+  exit 1
+fi
+
+nextflow run /apps/dibig_tools/dasa/ \
+  -resume -N ${USER}@ufl.edu -with-report dasa-report.html \
   -with-singularity /apps/dibig_tools/dasa/container/dasa.img \
-  /apps/dibig_tools/dasa/main.nf \
   --samples $SAMPLES \
-  --contrasts $CONTRASTS
+  --contrasts $CONTRASTS \
+  $*
 
 if [[ -f "mkreport.sh" ]];
 then

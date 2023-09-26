@@ -415,6 +415,7 @@ Channel
 	.filter( { it[3] == it[1] || it[3] == it[2] } )
 	.groupTuple()
 	.map( row -> tuple(row[0], row[4][0], row[4][1]) )
+	.view()
 	.set { common_peaks }
 
 process CommonPeaks {

@@ -363,7 +363,7 @@ def readNextflowConfig(filename):
                 state = 3
         elif state == 3:
             if w == '}':
-                sys.stderr.write("Error parsing `{}': word expected, found '}'.\n".format(filename))
+                sys.stderr.write("Error parsing `{}': word expected, found '}}'.\n".format(filename))
                 return False
             else:
                 dic[key][key2] = w

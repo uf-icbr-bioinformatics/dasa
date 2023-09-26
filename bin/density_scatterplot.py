@@ -147,18 +147,20 @@ class DensityPlot():
             div1 = make_axes_locatable(ax)
             # append a subplot to the right of the divider to be the first boxplot
             bp1 = div1.append_axes("right", size="35%", pad=0.4, sharey=ax)
+            #bp1 = plt.subplot(1, 2, 2, sharey=ax, size="35%")
             # append another subplot to be the second boxplot
-            bp2 = div1.append_axes("right", size="35%", pad=0.4, sharey=ax)
+            #bp2 = div1.append_axes("right", size="35%", pad=0.4, sharey=ax)
             # hide the y tick labels for the boxplots
-            for bp in (bp1, bp2):
-                plt.setp(bp.get_yticklabels(), visible=False)
+            #for bp in (bp1, bp2):
+            plt.setp(bp1.get_yticklabels(), visible=False)
         else:
             fig, ax = plt.subplots(figsize=(self.xsize, self.ysize))
         ax.scatter(x, y, c=z, s=self.pointSize)
 
         if self.log:
-            plt.xlim(xmin=min_x)
-            plt.ylim(ymin=min_y)
+            l = min(min_x, min_y)
+            plt.xlim(xmin=l)
+            plt.ylim(ymin=l)
         if self.fixed_scale:
             plt.xlim(xmax=self.max_x)
             plt.ylim(ymax=self.max_y)
@@ -166,8 +168,8 @@ class DensityPlot():
 
         # Do we want boxplots?
         if self.boxplots:
-            bp1.boxplot(dx)
-            bp2.boxplot(dy)
+            bp1.boxplot([dx, dy], positions=[2,4])
+            #bp2.boxplot(dy)
 
         # Do we want a regression line?
         if self.regprob:
@@ -187,12 +189,12 @@ class DensityPlot():
 
         if self.xlabel:
             ax.set_xlabel(self.xlabel)
-            if self.boxplots:
-                bp1.set_title(self.xlabel)
+            #if self.boxplots:
+            #    bp1.set_title(self.xlabel)
         if self.ylabel:
             ax.set_ylabel(self.ylabel)
-            if self.boxplots:
-                bp2.set_title(self.ylabel)
+            #if self.boxplots:
+            #    bp2.set_title(self.ylabel)
         plt.savefig(self.outfile, format=self.imgformat)
 
 def usage():
