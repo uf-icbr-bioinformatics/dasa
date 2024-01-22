@@ -35,6 +35,7 @@ params.gene_body_upstream = 1000
 params.gene_body_downstream = 1000
 
 /* For WashU hub creation */
+params.hub = true // Set to false to disable hub generation
 params.hubURL = "https://lichtlab.cancer.ufl.edu/reports/"
 params.hubName = "hub"
 params.hubOrganism = "hg38"
@@ -502,6 +503,8 @@ process BuildMatrix {
 	output:
 	tuple contr, testcond, ctrlcond, file("${contr}.matrix.csv"), file("labels.txt") into diffpeak_analysis_ch
 
+	publishDir "$outdir/data/$contr/", mode: "copy", pattern: "*.matrix.csv"
+	
 	script:
 	"""
 	dasatools.py matrix $testcond $conditions $samples $factors $countfiles > ${contr}.matrix.csv
@@ -624,10 +627,13 @@ process CollectFRIP {
 /* ** Convert BAMs for each sample to BW ** */
 
 process SampleBAMtoBW {
-	memory "10G"
+	memory "20G"
 	time "5h"
 	cpus 8
 
+	when:
+	params.hub == true
+	
 	input:
 	tuple smp, bamfile from sample_bam_to_bw_ch
 	val factors from factors_ch2
@@ -647,10 +653,13 @@ process SampleBAMtoBW {
 
 /* ** Convert BAM for each condition to BW ** */
 process CondBAMtoBW {
-	memory "10G"
+	memory "20G"
 	time "5h"
 	cpus 8
 
+	when:
+	params.hub == true
+	
 	input:
 	tuple cond, bamfile from cond_bam_to_bw_ch
 	val condfactors from condfactors_ch
@@ -804,6 +813,9 @@ Channel
 process MakeHubs {
 	executor "local"
 
+	when:
+	params.hub == true
+	
 	input:
 	val d1 from smp_bw_for_hub
 	val d2 from smp_bb_for_hub
@@ -833,6 +845,9 @@ process RegionsTornado {
 	time "2h"
 	memory "2G"
 
+	when:
+	params.hub == true
+	
 	input:
 	tuple label, samples, bigwigs, upregions, dnregions from regions_tornado_ch
 
@@ -878,6 +893,9 @@ process TSStornado {
 	time "6h"
 	memory "4G"
 
+	when:
+	params.hub == true
+	
 	input:
 	tuple label, samples, bigwigs, upregions, dnregions from tss_tornado_ch
 	file(tssfile) from tss_plots
@@ -1061,7 +1079,7 @@ Channel
 
 process GeneBodyMatrixChunk {
 	time "6h"
-	memory "2G"
+	memory "10G"
 
 	input:
 	val gbchunk from genebody_chunks

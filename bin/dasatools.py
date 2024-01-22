@@ -36,8 +36,8 @@ def convertPeaks(peaksfile, bedfile):
                     continue
 
                 bchrom = line[0]
-                if "_" in bchrom: # get rid of weird chromosomes
-                    continue
+                #if "_" in bchrom: # get rid of weird chromosomes
+                #    continue
 
                 # New chromosome?
                 if bchrom != chrom:
@@ -495,9 +495,12 @@ def linkify(path, name, target=""):
 
 def writeReport(samplesfile, contrastsfile, outdir, template, configfile): # template, title, baseurl, flags="T"):
     params = readNextflowConfig(configfile)["params"]
+    if "hub" not in params:
+        params["hub"] = "true"
     template = params["reportTemplate"] if "reportTemplate" in params else template
     title = params["reportTitle"]
-    params["washurl"] = "http://epigenomegateway.wustl.edu/browser/?genome={}&datahub={}/{}".format(params["hubOrganism"], params["hubURL"], params["hubName"])
+    if params["hub"] == "true":
+        params["washurl"] = "http://epigenomegateway.wustl.edu/browser/?genome={}&datahub={}/{}".format(params["hubOrganism"], params["hubURL"], params["hubName"])
     outdir = params["reportDir"]
     samples = readTable(samplesfile)
     conditions = readIDs(samplesfile, unique=True)
@@ -533,7 +536,6 @@ def writeReport(samplesfile, contrastsfile, outdir, template, configfile): # tem
                     out.write(line)
 
     with open("README", "w") as out:
-        hubname = params["hubName"]
         out.write("""DASA Results Directory
 
 The file "index.html" is the main output file. It should be opened with a web browser.
@@ -547,8 +549,10 @@ subdirectory for each contrast (e.g. KO.vs.WT) containing the following files:
   KO.vs.WT-sigpeaks.csv           Peaks showing significant difference
   KO.vs-WT-test-up.csv            Peaks that are significantly higher in test condition (e.g. KO1)
   KO.vs-WT-ctrl-up.csv            Peaks that are significantly higher in control condition (e.g. WT)
-
-The {} directory contains the bigWig and bigBed files to display these results in the
+""")
+        if params["hub"] == "true":
+            hubname = params["hubName"]
+            out.write("""The {} directory contains the bigWig and bigBed files to display these results in the
 WashU epigenetic browser. You should move the contents of this directory to a web server
 so that they can be accessed through the following URL:
 
@@ -568,7 +572,8 @@ def writeTable1(out, samples):
         out.write("<tr><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,} bp</td><td align='right'>{:.3f}</td><td align='right'>{:,}</td><td align='right'>{:.1f}%</td></tr>\n".format(smp, int(nreads[smp][0]), int(stats[smp][0]), float(factors[smp][2]), int(stats[smp][1]), 100.0*float(frips[smp][0])))
 
 def writeTable2(out, params):
-    out.write("""<TR>
+    if params["hub"] == "true":
+        out.write("""<TR>
   <TD align='center' width='50%'><A href='{}/peaks.json' target='washu'>SAMPLES</A></TD>
   <TD align='center'><A href='{}/condpeaks.json' target='washu'>CONDITIONS</A></TD>
 </TR>""".format(params["washurl"], params["washurl"]))
@@ -588,15 +593,19 @@ def writeTable4(out, contrasts, params):
     for contr in contrasts:
         label = contr[0] + ".vs." + contr[1]
         ctrdata = contrdata[label]
-        peaksetlink = """<BR><A target="_geneset" href="/tools/rs/index.cgi?cmd=add&name={}&source={}&org={}&gf={}">Create RegionSet</A>""".format(params["hubName"] + "-" + label, params["hubName"], params["hubOrganism"], 
-                                                                                                                                               params["hubURL"] + "/data/" + label + "/" + label + "-sigpeaks.csv")
+        if params["hub"] == "true":
+            peaksetlink = """<BR><A target="_geneset" href="/tools/rs/index.cgi?cmd=add&name={}&source={}&org={}&gf={}">Create RegionSet</A>""".format(params["hubName"] + "-" + label, params["hubName"], params["hubOrganism"], 
+                                                                                                                                                       params["hubURL"] + "/data/" + label + "/" + label + "-sigpeaks.csv")
+        else:
+            peaksetlink = ""
 
         out.write("<tr><th>{}</th><th>{}</th><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='right'>{:,}</td><td align='center'>Sig: {}<BR>All: {}{}</td><td align='center'>{}</td></tr>".format(
             contr[0], contr[1], int(ctrdata[0]), int(ctrdata[1]), int(ctrdata[2]),
             linkify("data/" + label + "/", label + "-sigpeaks.xlsx"),
             linkify("data/" + label + "/", label + "-diffpeaks.xlsx"),
             peaksetlink if "sets" in params else "",
-            linkify(params["washurl"], label + ".json", target="washu")))
+            linkify(params["washurl"], label + ".json", target="washu") if params["hub"] == "true" else ""))
+            
     
 def writeTable5(out, contrasts, params):
     contrdata = toDict(readTable("data/all-genediff-counts.txt"))
