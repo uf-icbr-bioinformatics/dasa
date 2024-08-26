@@ -416,7 +416,6 @@ Channel
 	.filter( { it[3] == it[1] || it[3] == it[2] } )
 	.groupTuple()
 	.map( row -> tuple(row[0], row[4][0], row[4][1]) )
-	.view()
 	.set { common_peaks }
 
 process CommonPeaks {
@@ -694,7 +693,8 @@ process SampleBEDtoBB {
 
 	script:
 	"""
-	samtools idxstats $bamfile | cut -f 1,2 | grep -v _ | grep -v ERCC > chrom.sizes
+	#samtools idxstats $bamfile | cut -f 1,2 | grep -v _ | grep -v ERCC > chrom.sizes
+	samtools idxstats $bamfile | cut -f 1,2 | grep -v ERCC > chrom.sizes
 	#bedToBigBed -type=bed3+3 -tab $bedfile chrom.sizes ${smp}.bb
 	bedToWig.py $bedfile chrom.sizes > ${smp}.wig
 	wigToBigWig ${smp}.wig chrom.sizes ${smp}.pk.bw
@@ -721,7 +721,8 @@ process CondBEDtoBB {
 
 	script:
 	"""
-	samtools idxstats $bamfile | cut -f 1,2 | grep -v _ | grep -v ERCC > chrom.sizes
+	# samtools idxstats $bamfile | cut -f 1,2 | grep -v _ | grep -v ERCC > chrom.sizes
+	samtools idxstats $bamfile | cut -f 1,2 | grep -v ERCC > chrom.sizes
 	dasatools.py convert $cond $bedfile temp.bed
 	bedToBigBed -type=bed3+3 -tab temp.bed chrom.sizes ${cond}.bb
 	"""
