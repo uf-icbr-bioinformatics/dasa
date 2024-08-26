@@ -1,10 +1,7 @@
 #!/bin/bash
 
-#set -e
-
 SAMPLES=$1
 CONTRASTS=$2
-#CONFIG=$3
 shift 2
 
 if [[ -z "$SAMPLES" ]];
@@ -69,13 +66,15 @@ EOF
   exit 1
 fi
 
+set -e
+
 if [[ ! -f nextflow.config ]];
 then 
   echo "No nextflow.config file!"
   exit 1
 fi
 
-nextflow run /apps/dibig_tools/dasa/ \
+nextflow run /apps/dibig_tools/dasa/main.nf \
   -resume -N ${USER}@ufl.edu -with-report dasa-report.html \
   -with-singularity /apps/dibig_tools/dasa/container/dasa.img \
   --samples $SAMPLES \
