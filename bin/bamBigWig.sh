@@ -7,7 +7,7 @@ factor=$3
 TMPD=$(mktemp -d -p .)
 mkdir -p $TMPD
 
-samtools idxstats $BAM | cut -f 1,2 | grep -v \* | grep -v _ | grep -v ERCC > $TMPD/chrom.sizes
+samtools idxstats $BAM | cut -f 1,2 | grep -v \* | grep -v ERCC > $TMPD/chrom.sizes
 
 BDGS=""
 
