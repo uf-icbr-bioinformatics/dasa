@@ -1,0 +1,19 @@
+process {
+	executor = "slurm"
+	clusterOptions = "--account=icbr-umbrella --qos=icbr-umbrella-b"
+	containerOptions = "--bind /apps/dibig_tools/dasa/"
+}
+
+params {
+       reportTitle = "NS2733 Differential Analysis"
+       genesfile = "/apps/dibig_tools/dasa/data/GRCh38-all-genes.txt"
+       enhancersfile = "/blue/licht/runs/MuscoLabCollab/NS2733-dasa/CD19+_CD20+_EP.bed"
+       hubURL = "https://lichtlab.cancer.ufl.edu/reports/MLC/NS2733-dasa"
+       hubName = "NS2733-dasa"
+       hubOrganism = "hg38"
+       reportDir = "NS2733-dasa"
+       log2fc = 0.58
+       pvalue = 0.05
+       log2fc_genes = 0.58
+       pvalue_genes = 0.05
+}

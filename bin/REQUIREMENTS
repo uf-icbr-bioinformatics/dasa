@@ -1,0 +1,4 @@
+samtools
+bedtools
+R (with DESeq2)
+bedGraphToBigWig
